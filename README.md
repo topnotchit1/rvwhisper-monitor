@@ -91,6 +91,17 @@ The API listens on `http://localhost:8080` by default. Set `NEXT_PUBLIC_DASHBOAR
 
 Credentials belong in the Pi's protected environment file and must never be committed.
 
+## Install on a Raspberry Pi
+
+The repository includes a versioned installer, hardened service definitions, a kiosk helper, a verification command, and a protected live-payload capture tool. Start with the complete [Raspberry Pi installation and live-data checklist](docs/pi-installation.md).
+
+```bash
+sudo bash deploy/install-pi.sh
+sudo /opt/minnie-dashboard/current/deploy/verify-pi.sh
+```
+
+The installer intentionally starts in demo mode and preserves Pi-only credentials and mappings across upgrades.
+
 ## Safety and data freshness
 
 - RV Whisper alerts remain enabled and independent.
@@ -107,6 +118,7 @@ Credentials belong in the Pi's protected environment file and must never be comm
 - `backend/tests/` — freshness, normalization, and storage tests
 - `docs/architecture.md` — system decisions and failure boundaries
 - `docs/privacy.md` — public-repository privacy rules
+- `docs/pi-installation.md` — Pi install, kiosk, capture, mapping, and live-mode checklist
 - `docs/open-questions/` — GitHub-ready issue drafts
 - `deploy/` — Raspberry Pi service examples
 

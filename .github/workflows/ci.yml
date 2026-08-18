@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: bash -n deploy/install-pi.sh deploy/install-kiosk.sh deploy/verify-pi.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

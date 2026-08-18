@@ -6,13 +6,15 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=rvdashboard
-WorkingDirectory=/opt/minnie-dashboard/backend
-EnvironmentFile=/etc/minnie-dashboard.env
-ExecStart=/opt/minnie-dashboard/backend/.venv/bin/rv-dashboard
+Group=rvdashboard
+WorkingDirectory=/opt/minnie-dashboard/current/backend
+EnvironmentFile=/etc/minnie-dashboard/dashboard.env
+ExecStart=/opt/minnie-dashboard/current/backend/.venv/bin/rv-dashboard
 Restart=always
 RestartSec=10
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/minnie-dashboard
 

@@ -14,6 +14,7 @@ dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<1"]
 
 [project.scripts]
 rv-dashboard = "rv_dashboard.main:run"
+rv-dashboard-capture = "rv_dashboard.capture:run"
 
 [build-system]
 requires = ["hatchling"]
