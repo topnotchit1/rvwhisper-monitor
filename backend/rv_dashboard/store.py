@@ -87,6 +87,35 @@ class Store:
             ).fetchall()
         return [dict(row) | {"data": json.loads(row["data_json"] or "{}") } for row in rows]
 
+    def numeric_ranges(self, paths: list[str], hours: int = 24) -> dict[str, dict[str, Any]]:
+        """Return real min/max values from retained samples for the requested time window."""
+        if not paths:
+            return {}
+        cutoff = (datetime.now(UTC) - timedelta(hours=max(1, min(hours, 72)))).isoformat()
+        placeholders = ",".join("?" for _ in paths)
+        with self._lock:
+            rows = self._connection.execute(
+                f"""SELECT path, value_json, unit, observed_at
+                    FROM samples
+                    WHERE path IN ({placeholders}) AND observed_at >= ?
+                    ORDER BY path, observed_at DESC""",
+                (*paths, cutoff),
+            ).fetchall()
+
+        summaries: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            value = json.loads(row["value_json"])
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            summary = summaries.setdefault(
+                row["path"],
+                {"min": value, "max": value, "unit": row["unit"], "samples": 0, "latest_at": row["observed_at"]},
+            )
+            summary["min"] = min(summary["min"], value)
+            summary["max"] = max(summary["max"], value)
+            summary["samples"] += 1
+        return summaries
+
     def prune_high_resolution(self, hours: int = 72) -> int:
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
         with self._lock, self._connection:
