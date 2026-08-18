@@ -1,0 +1,24 @@
+[project]
+name = "minnie-winnie-dashboard"
+version = "0.1.0"
+description = "Local RV Whisper collector and normalized dashboard API"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "uvicorn[standard]>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<1"]
+
+[project.scripts]
+rv-dashboard = "rv_dashboard.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to sensor-map.json only after capturing actual payloads. Replace sensor names and fields with observed values.",
+  "rules": [
+    { "sensor": "House Battery", "field": "Volts", "path": "power.battery.voltage", "unit": "V", "transform": "number" },
+    { "sensor": "Dog Area", "field": "DegreesF", "path": "environment.dog.temperature", "unit": "°F", "transform": "number" },
+    { "sensor": "Dog Area", "field": "PercentHumidity", "path": "environment.dog.humidity", "unit": "%", "transform": "number" }
+  ]
+}
