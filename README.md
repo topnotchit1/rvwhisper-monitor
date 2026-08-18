@@ -6,9 +6,31 @@ A clean, wall-mounted systems dashboard for a 2025 Winnebago Minnie Winnie 31K.
 
 The dashboard is a visualization and diagnostic interface. **RV Whisper remains the authoritative, independent monitoring, history, and alerting system.** A Pi failure must never prevent RV Whisper from notifying the owner.
 
+## Interface gallery
+
+The screenshots below show the representative demo dataset. Live mode uses mapped RV Whisper readings and clearly marks missing, stale, or unavailable data.
+
+### Home
+
+![Four-quadrant RV systems overview](docs/screenshots/home.png)
+
+### Diagnostic views
+
+| House Battery | AC Power |
+| :---: | :---: |
+| ![House Battery diagnostic view](docs/screenshots/house-battery.png) | ![AC Power diagnostic view](docs/screenshots/ac-power.png) |
+
+| Climate | Tanks |
+| :---: | :---: |
+| ![Climate diagnostic view](docs/screenshots/climate.png) | ![Tank-level diagnostic view](docs/screenshots/tanks.png) |
+
+### Events
+
+![Events diagnostic view](docs/screenshots/events.png)
+
 ## What is implemented
 
-- Responsive, kiosk-friendly Home, Power, Climate, Tanks, and Events views
+- Responsive, kiosk-friendly Home, House Battery, AC Power, Climate, Tanks, and Events views
 - Deliberate Normal, Shore Power Lost, and Stale Data preview states
 - Diagnostic shore-loss summary showing battery load, dog temperature, and connectivity
 - Conservative energy flow that never invents source attribution from net shunt current
@@ -69,6 +91,17 @@ The API listens on `http://localhost:8080` by default. Set `NEXT_PUBLIC_DASHBOAR
 
 Credentials belong in the Pi's protected environment file and must never be committed.
 
+## Install on a Raspberry Pi
+
+The repository includes a versioned installer, hardened service definitions, a kiosk helper, a verification command, and a protected live-payload capture tool. Start with the complete [Raspberry Pi installation and live-data checklist](docs/pi-installation.md).
+
+```bash
+sudo bash deploy/install-pi.sh
+sudo /opt/minnie-dashboard/current/deploy/verify-pi.sh
+```
+
+The installer intentionally starts in demo mode and preserves Pi-only credentials and mappings across upgrades.
+
 ## Safety and data freshness
 
 - RV Whisper alerts remain enabled and independent.
@@ -85,6 +118,7 @@ Credentials belong in the Pi's protected environment file and must never be comm
 - `backend/tests/` — freshness, normalization, and storage tests
 - `docs/architecture.md` — system decisions and failure boundaries
 - `docs/privacy.md` — public-repository privacy rules
+- `docs/pi-installation.md` — Pi install, kiosk, capture, mapping, and live-mode checklist
 - `docs/open-questions/` — GitHub-ready issue drafts
 - `deploy/` — Raspberry Pi service examples
 

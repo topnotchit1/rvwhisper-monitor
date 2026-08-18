@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from .collector import Collector
 from .demo import demo_snapshot
 from .event_bus import EventBus
+from .model import Snapshot
 from .normalization import Normalizer
 from .rvwhisper import RVWhisperClient
 from .store import Store
@@ -23,8 +24,36 @@ ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = int(os.getenv("RVW_POLL_SECONDS", "60"))
 STALE_AFTER_SECONDS = int(os.getenv("STALE_AFTER_SECONDS", str(max(POLL_SECONDS * 2 + 15, 150))))
 MODE = os.getenv("DASHBOARD_MODE", "demo").lower()
+CLIMATE_PATHS = [
+    "environment.dog.temperature",
+    "environment.coach.temperature",
+    "environment.fridge.temperature",
+    "environment.freezer.temperature",
+]
+HISTORY_PATHS = [
+    "power.battery.soc",
+    "power.battery.voltage",
+    "power.battery.current",
+    "power.battery.power",
+    "power.ac.voltage",
+    "power.ac.current",
+    "power.ac.power",
+    "power.ac.frequency",
+    "environment.dog.temperature",
+    "environment.dog.humidity",
+    "environment.coach.temperature",
+    "environment.coach.humidity",
+    "environment.fridge.temperature",
+    "environment.fridge.humidity",
+    "environment.freezer.temperature",
+    "environment.freezer.humidity",
+    "tank.fresh.percent",
+    "tank.gray.percent",
+    "tank.black.percent",
+    "tank.propane.percent",
+]
 
-snapshot = demo_snapshot()
+snapshot = demo_snapshot() if MODE != "live" else Snapshot()
 bus = EventBus()
 store = Store(os.getenv("DASHBOARD_DB", str(ROOT / "data" / "dashboard.db")))
 collector: Collector | None = None
@@ -72,7 +101,7 @@ async def health() -> dict[str, object]:
 
 @app.get("/api/state")
 async def get_state() -> dict[str, object]:
-    return snapshot.to_api(STALE_AFTER_SECONDS)
+    return snapshot.to_api(STALE_AFTER_SECONDS) | {"mode": MODE}
 
 
 @app.get("/api/events")
@@ -80,14 +109,27 @@ async def get_events(limit: int = Query(100, ge=1, le=500)) -> list[dict[str, ob
     return store.recent_events(limit)
 
 
+@app.get("/api/climate-summary")
+async def get_climate_summary(hours: int = Query(24, ge=1, le=72)) -> dict[str, object]:
+    return {"hours": hours, "readings": store.numeric_ranges(CLIMATE_PATHS, hours)}
+
+
+@app.get("/api/history-summary")
+async def get_history_summary(hours: int = Query(24, ge=1, le=72)) -> dict[str, object]:
+    """Return real retained ranges for every numeric dashboard detail field."""
+    return {"hours": hours, "readings": store.numeric_ranges(HISTORY_PATHS, hours)}
+
+
 @app.get("/api/stream")
 async def stream_state() -> StreamingResponse:
     async def events() -> AsyncIterator[str]:
-        yield f"event: state\ndata: {json.dumps(snapshot.to_api(STALE_AFTER_SECONDS))}\n\n"
+        yield f"event: state\ndata: {json.dumps(snapshot.to_api(STALE_AFTER_SECONDS) | {'mode': MODE})}\n\n"
         async with bus.subscriber() as queue:
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=25)
+                    if event.get("type") == "state" and isinstance(event.get("state"), dict):
+                        event["state"]["mode"] = MODE
                     yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
                 except TimeoutError:
                     yield ": heartbeat\n\n"
