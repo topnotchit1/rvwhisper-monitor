@@ -6,9 +6,31 @@ A clean, wall-mounted systems dashboard for a 2025 Winnebago Minnie Winnie 31K.
 
 The dashboard is a visualization and diagnostic interface. **RV Whisper remains the authoritative, independent monitoring, history, and alerting system.** A Pi failure must never prevent RV Whisper from notifying the owner.
 
+## Interface gallery
+
+The screenshots below show the representative demo dataset. Live mode uses mapped RV Whisper readings and clearly marks missing, stale, or unavailable data.
+
+### Home
+
+![Four-quadrant RV systems overview](docs/screenshots/home.png)
+
+### Diagnostic views
+
+| House Battery | AC Power |
+| :---: | :---: |
+| ![House Battery diagnostic view](docs/screenshots/house-battery.png) | ![AC Power diagnostic view](docs/screenshots/ac-power.png) |
+
+| Climate | Tanks |
+| :---: | :---: |
+| ![Climate diagnostic view](docs/screenshots/climate.png) | ![Tank-level diagnostic view](docs/screenshots/tanks.png) |
+
+### Events
+
+![Events diagnostic view](docs/screenshots/events.png)
+
 ## What is implemented
 
-- Responsive, kiosk-friendly Home, Power, Climate, Tanks, and Events views
+- Responsive, kiosk-friendly Home, House Battery, AC Power, Climate, Tanks, and Events views
 - Deliberate Normal, Shore Power Lost, and Stale Data preview states
 - Diagnostic shore-loss summary showing battery load, dog temperature, and connectivity
 - Conservative energy flow that never invents source attribution from net shunt current
