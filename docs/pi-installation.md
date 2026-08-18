@@ -5,7 +5,7 @@ This guide prepares a Raspberry Pi as the local collector, history store, web se
 ## Hardware and operating-system choice
 
 - Prefer Raspberry Pi OS 64-bit with Desktop so Chromium and the current `labwc` kiosk flow are available.
-- A Pi with at least 1 GB RAM is the reliable kiosk target. [Raspberry Pi's current kiosk guidance](https://www.raspberrypi.com/tutorials/how-to-use-a-raspberry-pi-in-kiosk-mode/) recommends a Pi 3 or newer with at least 1 GB RAM.
+- A Pi with at least 2 GB RAM is the reliable kiosk target. [Raspberry Pi's current kiosk guidance](https://www.raspberrypi.com/tutorials/how-to-use-a-raspberry-pi-in-kiosk-mode/) recommends a Pi 3 or newer with at least 1 GB RAM.
 - A Pi Zero 2 W has only 512 MB. The installer permits it but prints a warning; treat it as an experiment and keep a Pi 4 with 2 GB or more as the fallback if Chromium or on-device builds are unstable.
 - Use a quality power supply, a high-endurance microSD card, cooling appropriate to the enclosure, and a 1024×600 capacitive display.
 
