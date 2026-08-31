@@ -33,3 +33,23 @@ jobs:
           cache: pip
       - run: python -m pip install -e "./backend[dev]"
       - run: python -m pytest -q backend/tests
+
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows launcher
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "scripts/dev-windows.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "Windows launcher contains PowerShell syntax errors."
+          }
+          scripts\dev-windows.cmd -Action Status

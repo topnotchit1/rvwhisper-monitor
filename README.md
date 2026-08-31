@@ -71,6 +71,24 @@ npm run dev
 
 Open `http://localhost:3000`. Without the local API, the UI clearly labels itself **Demo** and uses representative data.
 
+### Reliable Windows development startup
+
+After installing the frontend and backend dependencies, Windows developers can start or restart both services with one command:
+
+```powershell
+scripts\dev-windows.cmd
+```
+
+The launcher reads private API settings from the ignored `backend/.env` file, forces the development ports to UI `3000` and API `8080`, records owned process identifiers under ignored `.dev-windows/`, and waits for both exact listeners and HTTP services to become healthy. Strict-port mode prevents the UI from silently moving to `3001`. It stops processes from its own prior run and recognizes project listeners left behind by an interrupted run. An unknown process occupying either port is never killed silently; inspect it first and use `-ForcePortCleanup` only when it is confirmed stale. Live-mode collector availability is reported separately, so a temporary RVM3 or Wi-Fi outage does not take down the local dashboard.
+
+```powershell
+scripts\dev-windows.cmd -Action Status
+scripts\dev-windows.cmd -Action Stop
+scripts\dev-windows.cmd -ForcePortCleanup
+```
+
+Startup failures print the relevant log location. The background processes use hidden windows, and their logs remain in `.dev-windows/`.
+
 ## Run the local API
 
 Requires Python 3.11 or later.
