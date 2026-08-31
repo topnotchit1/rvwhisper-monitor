@@ -136,17 +136,40 @@ function Stop-TrackedProcesses {
 
 function Test-IsProjectListener([int]$ProcessId, [int]$Port) {
     $commandLine = Get-ProcessCommandLine $ProcessId
-    if (-not $commandLine) {
+    if ($commandLine -and $commandLine -like "*$RepoRoot*") {
+        return $true
+    }
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($process -and $process.Path -and $process.Path -like "*$RepoRoot*") {
+        return $true
+    }
+    if ($Port -eq $ApiPort -and $commandLine -and $commandLine -match "rv_dashboard\.main|uvicorn.+8080") {
+        return $true
+    }
+    if ($Port -eq $UiPort -and $commandLine -and $commandLine -match "vinext.+dev|vite.+3000") {
+        return $true
+    }
+
+    # Command-line inspection may be denied by Windows policy. A strong HTTP
+    # signature still lets us reclaim an interrupted run without treating an
+    # unrelated service on the same port as ours.
+    try {
+        if ($Port -eq $ApiPort) {
+            $health = Invoke-RestMethod -Uri "http://localhost:$ApiPort/health" -TimeoutSec 5
+            $properties = @($health.PSObject.Properties.Name)
+            if ($health.status -eq "ok" -and $properties -contains "mode" -and $properties -contains "collector_online") {
+                return $true
+            }
+        }
+        elseif ($Port -eq $UiPort) {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:$UiPort/" -TimeoutSec 5
+            if ($response.StatusCode -eq 200 -and $response.Content -match "Minnie Winnie Systems") {
+                return $true
+            }
+        }
+    }
+    catch {
         return $false
-    }
-    if ($commandLine -like "*$RepoRoot*") {
-        return $true
-    }
-    if ($Port -eq $ApiPort -and $commandLine -match "rv_dashboard\.main|uvicorn.+8080") {
-        return $true
-    }
-    if ($Port -eq $UiPort -and $commandLine -match "vinext.+dev|vite.+3000") {
-        return $true
     }
     $false
 }
@@ -386,6 +409,13 @@ try {
     $temporaryState = "$StateFile.tmp"
     $state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $temporaryState -Encoding UTF8
     Move-Item -LiteralPath $temporaryState -Destination $StateFile -Force
+
+    # Catch immediate child failures (for example, a Windows file-watcher
+    # error) before reporting a successful persistent start.
+    Start-Sleep -Seconds 2
+    if (-not @(Get-ListenerProcessIds $UiPort).Count -or -not @(Get-ListenerProcessIds $ApiPort).Count) {
+        throw "A development service exited immediately after startup."
+    }
 
     Write-Step "Ready"
     Write-Host "  UI:        http://localhost:$UiPort"
