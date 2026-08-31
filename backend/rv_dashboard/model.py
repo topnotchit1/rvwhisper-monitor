@@ -23,15 +23,18 @@ class Reading:
     observed_at: datetime
     source: str
     health: Health = Health.NORMAL
+    stale_after_seconds: int | None = None
 
     def to_api(self, stale_after_seconds: int, now: datetime | None = None) -> dict[str, Any]:
         now = now or datetime.now(UTC)
         age = max(0, int((now - self.observed_at).total_seconds()))
-        health = Health.STALE if age > stale_after_seconds else self.health
+        effective_stale_after = self.stale_after_seconds or stale_after_seconds
+        health = Health.STALE if age > effective_stale_after else self.health
         result = asdict(self)
         result["observed_at"] = self.observed_at.isoformat()
         result["health"] = health.value
         result["age_seconds"] = age
+        result.pop("stale_after_seconds", None)
         return result
 
 

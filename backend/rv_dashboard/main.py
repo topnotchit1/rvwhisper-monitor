@@ -16,7 +16,8 @@ from .demo import demo_snapshot
 from .event_bus import EventBus
 from .model import Snapshot
 from .normalization import Normalizer
-from .rvwhisper import RVWhisperClient
+from .profile import load_profile
+from .rvwhisper import client_from_environment
 from .store import Store
 
 
@@ -24,12 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = int(os.getenv("RVW_POLL_SECONDS", "60"))
 STALE_AFTER_SECONDS = int(os.getenv("STALE_AFTER_SECONDS", str(max(POLL_SECONDS * 2 + 15, 150))))
 MODE = os.getenv("DASHBOARD_MODE", "demo").lower()
-CLIMATE_PATHS = [
-    "environment.dog.temperature",
-    "environment.coach.temperature",
-    "environment.fridge.temperature",
-    "environment.freezer.temperature",
-]
+PROFILE = load_profile(os.getenv("DASHBOARD_PROFILE"))
+CLIMATE_PATHS = [item["path"] for item in PROFILE["sections"]["climate"]["items"]]
+CLIMATE_HUMIDITY_PATHS = [path.removesuffix(".temperature") + ".humidity" for path in CLIMATE_PATHS]
 HISTORY_PATHS = [
     "power.battery.soc",
     "power.battery.voltage",
@@ -39,19 +37,9 @@ HISTORY_PATHS = [
     "power.ac.current",
     "power.ac.power",
     "power.ac.frequency",
-    "environment.dog.temperature",
-    "environment.dog.humidity",
-    "environment.coach.temperature",
-    "environment.coach.humidity",
-    "environment.fridge.temperature",
-    "environment.fridge.humidity",
-    "environment.freezer.temperature",
-    "environment.freezer.humidity",
-    "tank.fresh.percent",
-    "tank.gray.percent",
-    "tank.black.percent",
-    "tank.propane.percent",
-]
+    "power.ac.energy_kwh",
+    "power.ac.rssi",
+] + CLIMATE_PATHS + CLIMATE_HUMIDITY_PATHS + [item["path"] for item in PROFILE["sections"]["tanks"]["items"]]
 
 snapshot = demo_snapshot() if MODE != "live" else Snapshot()
 bus = EventBus()
@@ -64,12 +52,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global collector
     task: asyncio.Task[None] | None = None
     if MODE == "live":
-        required = {key: os.getenv(key) for key in ("RVW_ID", "RVW_USERNAME", "RVW_PASSWORD")}
-        missing = [key for key, value in required.items() if not value]
-        if missing:
-            raise RuntimeError(f"Live mode requires: {', '.join(missing)}")
         normalizer = Normalizer.from_file(os.getenv("SENSOR_MAP", str(ROOT / "config" / "sensor-map.json")))
-        client = RVWhisperClient(required["RVW_ID"] or "", required["RVW_USERNAME"] or "", required["RVW_PASSWORD"] or "")
+        try:
+            client = client_from_environment()
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
         collector = Collector(client, normalizer, snapshot, store, bus, POLL_SECONDS, STALE_AFTER_SECONDS)
         task = asyncio.create_task(collector.run(), name="rvwhisper-collector")
     try:
@@ -104,9 +91,25 @@ async def get_state() -> dict[str, object]:
     return snapshot.to_api(STALE_AFTER_SECONDS) | {"mode": MODE}
 
 
+@app.get("/api/config")
+async def get_config() -> dict[str, object]:
+    """Return display-only installation settings; secrets and network details are never exposed."""
+    return PROFILE
+
+
 @app.get("/api/events")
 async def get_events(limit: int = Query(100, ge=1, le=500)) -> list[dict[str, object]]:
     return store.recent_events(limit)
+
+
+@app.get("/api/alerts")
+async def get_alerts() -> dict[str, object]:
+    active = store.active_alerts()
+    return {
+        "active": active,
+        "unacknowledged": sum(not alert["acknowledged"] for alert in active),
+        "acknowledged": sum(bool(alert["acknowledged"]) for alert in active),
+    }
 
 
 @app.get("/api/climate-summary")

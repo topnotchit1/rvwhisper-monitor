@@ -5,6 +5,7 @@ import logging
 
 import httpx
 
+from .alerts import AlertParseError, parse_active_alerts
 from .event_bus import EventBus
 from .model import Snapshot
 from .normalization import Normalizer
@@ -49,6 +50,13 @@ class Collector:
                 self.snapshot.collector_online = True
                 if readings:
                     self.store.save_readings(readings)
+                try:
+                    alert_html = await self.client.fetch_alert_settings()
+                    alerts_changed = self.store.sync_active_alerts(parse_active_alerts(alert_html))
+                    if alerts_changed:
+                        await self.bus.publish({"type": "alerts", "alerts": self.store.active_alerts()})
+                except (AlertParseError, RVWhisperError, httpx.HTTPError, OSError, TimeoutError) as exc:
+                    LOGGER.warning("RV Whisper alert collection failed without interrupting telemetry: %s", exc)
                 if changed:
                     await self.bus.publish({"type": "state", "state": self.snapshot.to_api(self.stale_after_seconds)})
                 backoff = self.poll_seconds

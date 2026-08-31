@@ -35,7 +35,7 @@ The screenshots below show the representative demo dataset. Live mode uses mappe
 - Diagnostic shore-loss summary showing battery load, dog temperature, and connectivity
 - Conservative energy flow that never invents source attribution from net shunt current
 - Normalized readings such as `power.battery.soc` and `environment.dog.temperature`
-- RV Whisper collector based on the public `Yeraze/rvwhisper-monitor` authentication and sensor-discovery flow
+- RV Whisper collector supporting direct, credential-free RVM3 access on a trusted LAN and authenticated gateway fallback
 - Automatic session recovery, bounded polling, internal event bus, SSE browser updates, and SQLite history
 - Demo mode that runs without RV hardware; live mode requires explicit credentials and an observed sensor map
 
@@ -54,6 +54,8 @@ PowerMon direct BLE (phase 2) ───────────────► L
 ```
 
 External acquisition may poll conservatively. Everything after collection is change-driven. The browser never polls individual sensors.
+
+Direct LAN collection is preferred because it does not consume internet data and keeps the display working during an internet outage. Gateway access remains available as a fallback.
 
 ## Run the dashboard UI
 
@@ -86,10 +88,10 @@ The API listens on `http://localhost:8080` by default. Set `NEXT_PUBLIC_DASHBOAR
 1. Operate in demo mode first.
 2. Capture real JSON for each installed sensor.
 3. Copy `backend/config/sensor-map.example.json` to `sensor-map.json` and map only observed fields.
-4. Set `DASHBOARD_MODE=live` plus `RVW_ID`, `RVW_USERNAME`, and `RVW_PASSWORD`.
+4. Prefer `RVW_ACCESS_MODE=local` with `RVW_BASE_URL` set to the RVM3's direct LAN address. Gateway mode additionally requires `RVW_USERNAME` and `RVW_PASSWORD`.
 5. Start with `RVW_POLL_SECONDS=60`; do not reduce it until RV Whisper confirms an acceptable cadence.
 
-Credentials belong in the Pi's protected environment file and must never be committed.
+LAN addresses, credentials, and real sensor mappings belong in the Pi's protected environment file and must never be committed.
 
 ## Install on a Raspberry Pi
 
@@ -101,6 +103,18 @@ sudo /opt/minnie-dashboard/current/deploy/verify-pi.sh
 ```
 
 The installer intentionally starts in demo mode and preserves Pi-only credentials and mappings across upgrades.
+
+### Configure an installation
+
+Each installation keeps its identity, RVM3 address, sensor mapping, and display choices outside the public repository. The interactive installer offers to collect the RV display name and direct RVM3 LAN address. It can also be rerun later:
+
+```bash
+sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
+```
+
+`dashboard-profile.json` controls the RV name, monogram, enabled sections, climate sensor labels/count, tank labels/count, and which items appear on Home. `sensor-map.json` independently maps the fields actually reported by that owner's RV Whisper installation to normalized dashboard paths. The home screen shows up to four selected climate readings and four selected tanks; detail pages show every configured item.
+
+Wi-Fi names and passwords are managed by Raspberry Pi OS, not by the dashboard. The dashboard profile, RVM3 LAN address, credentials, and real sensor names remain Pi-local and are never committed.
 
 ## Safety and data freshness
 

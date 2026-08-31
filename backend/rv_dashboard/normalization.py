@@ -24,7 +24,17 @@ def _integer(value: Any) -> int:
 def _boolean(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    return str(value).strip().lower() in {"1", "true", "yes", "on", "connected", "open"}
+    return str(value).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "connected",
+        "open",
+        "up",
+        "online",
+        "active",
+    }
 
 
 TRANSFORMS: dict[str, Callable[[Any], Any]] = {
@@ -33,6 +43,7 @@ TRANSFORMS: dict[str, Callable[[Any], Any]] = {
     "integer": _integer,
     "boolean": _boolean,
     "invert_boolean": lambda value: not _boolean(value),
+    "ac_connected": lambda value: float(value) >= 90,
 }
 
 
@@ -43,6 +54,7 @@ class FieldRule:
     path: str
     unit: str | None = None
     transform: str = "identity"
+    stale_after_seconds: int | None = None
 
 
 class Normalizer:
@@ -72,12 +84,15 @@ class Normalizer:
         for rule in self.rules:
             if rule.sensor.casefold() != sensor_name.casefold() or rule.field not in row:
                 continue
+            stale_after_seconds = rule.stale_after_seconds
+            if stale_after_seconds is None and rule.path.startswith("environment."):
+                stale_after_seconds = 420
             try:
                 value = TRANSFORMS[rule.transform](row[rule.field])
             except (KeyError, TypeError, ValueError):
-                readings.append(Reading(rule.path, None, rule.unit, observed_at, f"rvwhisper:{sensor_name}", Health.UNKNOWN))
+                readings.append(Reading(rule.path, None, rule.unit, observed_at, f"rvwhisper:{sensor_name}", Health.UNKNOWN, stale_after_seconds))
                 continue
-            readings.append(Reading(rule.path, value, rule.unit, observed_at, f"rvwhisper:{sensor_name}"))
+            readings.append(Reading(rule.path, value, rule.unit, observed_at, f"rvwhisper:{sensor_name}", stale_after_seconds=stale_after_seconds))
         return readings
 
     @staticmethod

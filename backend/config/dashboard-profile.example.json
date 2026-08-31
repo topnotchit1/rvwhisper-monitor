@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "vehicle": {
+    "name": "My RV",
+    "subtitle": "Unified systems",
+    "monogram": "RV"
+  },
+  "sections": {
+    "battery": { "enabled": true, "label": "House Battery" },
+    "ac_power": { "enabled": true, "label": "AC Power" },
+    "climate": {
+      "enabled": true,
+      "label": "Climate",
+      "items": [
+        { "id": "living-area", "label": "Living area", "path": "environment.living.temperature", "home": true },
+        { "id": "refrigerator", "label": "Refrigerator", "path": "environment.fridge.temperature", "home": true },
+        { "id": "freezer", "label": "Freezer", "path": "environment.freezer.temperature", "home": true }
+      ]
+    },
+    "tanks": {
+      "enabled": true,
+      "label": "Tanks",
+      "items": [
+        { "id": "fresh", "label": "Fresh", "path": "tank.fresh.percent", "tone": "fresh", "home": true },
+        { "id": "gray", "label": "Gray", "path": "tank.gray.percent", "tone": "gray", "home": true },
+        { "id": "black", "label": "Black", "path": "tank.black.percent", "tone": "black", "home": true },
+        { "id": "propane", "label": "Propane", "path": "tank.propane.percent", "tone": "propane", "home": true }
+      ]
+    },
+    "events": { "enabled": true, "label": "Events" }
+  }
+}

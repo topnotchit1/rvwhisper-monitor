@@ -71,7 +71,7 @@ echo "Installing and building the touchscreen UI..."
   NEXT_PUBLIC_DASHBOARD_API_URL=http://127.0.0.1:8080 npm ci
   NEXT_PUBLIC_DASHBOARD_API_URL=http://127.0.0.1:8080 npm run build
 )
-chmod 0755 "$RELEASE_DIR/deploy/install-pi.sh" "$RELEASE_DIR/deploy/install-kiosk.sh" "$RELEASE_DIR/deploy/verify-pi.sh"
+chmod 0755 "$RELEASE_DIR/deploy/install-pi.sh" "$RELEASE_DIR/deploy/configure-dashboard.sh" "$RELEASE_DIR/deploy/install-kiosk.sh" "$RELEASE_DIR/deploy/verify-pi.sh"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   install -m 0640 -o root -g "$SERVICE_USER" "$RELEASE_DIR/deploy/minnie-dashboard.env.example" "$ENV_FILE"
@@ -83,6 +83,18 @@ fi
 if [[ ! -f "$CONFIG_DIR/sensor-map.json" ]]; then
   install -m 0640 -o root -g "$SERVICE_USER" "$RELEASE_DIR/backend/config/sensor-map.example.json" "$CONFIG_DIR/sensor-map.json"
   echo "Created a placeholder sensor map; replace it only after capturing real payloads."
+fi
+
+if [[ ! -f "$CONFIG_DIR/dashboard-profile.json" ]]; then
+  install -m 0640 -o root -g "$SERVICE_USER" "$RELEASE_DIR/backend/config/dashboard-profile.example.json" "$CONFIG_DIR/dashboard-profile.json"
+  echo "Created a generic dashboard profile."
+fi
+
+if [[ -t 0 && "${SKIP_INTERACTIVE_CONFIG:-0}" != "1" ]]; then
+  read -r -p "Configure the RV name and direct RVM3 LAN address now? [Y/n] " configure_now
+  if [[ ! "$configure_now" =~ ^[Nn]$ ]]; then
+    "$RELEASE_DIR/deploy/configure-dashboard.sh" --no-restart
+  fi
 fi
 
 ln -sfn "$RELEASE_DIR" "$INSTALL_ROOT/current"
@@ -98,3 +110,4 @@ echo "  Local display: http://localhost:3000"
 echo "  API health:    http://localhost:8080/health"
 echo "  Verify:        sudo $INSTALL_ROOT/current/deploy/verify-pi.sh"
 echo "  Live setup:    $INSTALL_ROOT/current/docs/pi-installation.md"
+echo "  Reconfigure:   sudo $INSTALL_ROOT/current/deploy/configure-dashboard.sh"

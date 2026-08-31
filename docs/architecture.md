@@ -6,7 +6,7 @@ The custom application is not an alarm system. RV Whisper independently owns ale
 
 ## Data flow
 
-1. The RV Whisper adapter authenticates to the web service and discovers sensors.
+1. The RV Whisper adapter preferably reads the RVM3 directly over trusted-LAN HTTP; authenticated cloud-gateway access remains an optional fallback.
 2. A configurable collector polls no faster than 30 seconds; 60 seconds is the default.
 3. A rule-based normalizer translates observed vendor fields to stable paths.
 4. Changed readings update the current snapshot, append to SQLite, and publish to the event bus.
@@ -33,13 +33,18 @@ SQLite stores one current row per normalized path, 24–72 hours of high-resolut
 
 ## Failure behavior
 
-- Authentication expiry: reauthenticate and rediscover sensors.
+- Gateway authentication expiry: reauthenticate and rediscover sensors.
 - Invalid or changed HTML/JSON: record collector failure; retain old values only as stale context.
-- Internet outage: exponential retry up to 15 minutes; no rapid hammering.
+- Internet outage while using local RVM3 access: dashboard telemetry continues; RV Whisper remote access and notifications retain their own independent internet requirements.
+- RVM3 LAN outage: exponential retry up to 15 minutes; no rapid hammering.
 - Browser disconnect: EventSource reconnects; one state snapshot is sent immediately.
 - Pi failure: RV Whisper alerts continue without the Pi.
 - Direct PowerMon failure in phase 2: fall back to RV Whisper data; never merge incompatible timestamps as current.
 
-## PowerMon phase 2
+## PowerMon and Power Watchdog
 
-Direct BLE must remain optional until simultaneous RVM3 and Pi consumers are proven reliable. A direct adapter publishes to the same normalized paths with explicit source and timestamp; the UI does not know which adapter supplied the reading.
+PowerMon and Power Watchdog readings already integrated into RV Whisper are collected from the RVM3 like every other sensor. This is the preferred path. A direct BLE adapter is unnecessary for the initial installation and must remain optional until simultaneous RVM3 and Pi consumers are proven reliable. Any future adapter must publish to the same normalized paths with explicit source and timestamp.
+
+## Alert acknowledgement boundary
+
+RV Whisper remains the only alert evaluator and notification sender. A future dashboard acknowledgement action may request acknowledgement of one currently active alert, but it must be disabled by default, authenticated locally, confirmed by re-reading RV Whisper, and unable to edit, deactivate, or delete alert triggers. See `docs/alert-acknowledgement.md`.

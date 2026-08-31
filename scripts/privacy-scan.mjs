@@ -17,6 +17,7 @@ const ignored = new Set([
   "work",
 ]);
 const binaryExtensions = new Set([".db", ".gif", ".ico", ".jpeg", ".jpg", ".pdf", ".png", ".pyc", ".webp", ".zip"]);
+const ignoredRuntimePaths = new Set(["backend/captures", "backend/data"]);
 const findings = [];
 const rules = [
   ["email address", /\b(?![^\s@]*@users\.noreply\.github\.com)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi],
@@ -31,6 +32,7 @@ async function walk(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (ignored.has(entry.name)) continue;
     const path = join(directory, entry.name);
+    if (ignoredRuntimePaths.has(relative(root, path).replaceAll("\\", "/"))) continue;
     if (entry.isDirectory()) await walk(path);
     else if (!binaryExtensions.has(extname(entry.name).toLowerCase())) {
       const content = await readFile(path, "utf8");

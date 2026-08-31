@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from .alerts import ActiveAlert
 from .model import Reading
 
 
@@ -41,6 +42,15 @@ SCHEMA = (
     )""",
     """CREATE INDEX IF NOT EXISTS idx_events_occurred_at
         ON events(occurred_at DESC)""",
+    """CREATE TABLE IF NOT EXISTS active_alerts (
+        fingerprint TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        acknowledged INTEGER NOT NULL,
+        created_at TEXT,
+        last_seen_at TEXT NOT NULL
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_active_alerts_acknowledged
+        ON active_alerts(acknowledged, created_at DESC)""",
 )
 
 
@@ -83,9 +93,88 @@ class Store:
     def recent_events(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._connection.execute(
-                "SELECT * FROM events ORDER BY occurred_at DESC LIMIT ?", (max(1, min(limit, 500)),)
+                "SELECT * FROM events ORDER BY occurred_at DESC, id DESC LIMIT ?", (max(1, min(limit, 500)),)
             ).fetchall()
         return [dict(row) | {"data": json.loads(row["data_json"] or "{}") } for row in rows]
+
+    def sync_active_alerts(self, alerts: list[ActiveAlert]) -> bool:
+        """Mirror RV Whisper's active list and retain local transition history."""
+        now = datetime.now(UTC).isoformat()
+        incoming = {alert.fingerprint: alert for alert in alerts}
+        changed = False
+        with self._lock, self._connection:
+            existing = {
+                row["fingerprint"]: row
+                for row in self._connection.execute("SELECT * FROM active_alerts").fetchall()
+            }
+            for fingerprint, alert in incoming.items():
+                previous = existing.get(fingerprint)
+                acknowledged = int(alert.acknowledged)
+                self._connection.execute(
+                    """INSERT INTO active_alerts(fingerprint, title, acknowledged, created_at, last_seen_at)
+                       VALUES(?, ?, ?, ?, ?)
+                       ON CONFLICT(fingerprint) DO UPDATE SET title=excluded.title,
+                       acknowledged=excluded.acknowledged, created_at=excluded.created_at,
+                       last_seen_at=excluded.last_seen_at""",
+                    (fingerprint, alert.title, acknowledged, alert.created_at, now),
+                )
+                if previous is None:
+                    changed = True
+                    self._insert_event(
+                        "rvwhisper.alert.active",
+                        "normal" if alert.acknowledged else "warning",
+                        alert.title,
+                        "Active alert imported from RV Whisper" + (" · acknowledged" if alert.acknowledged else " · needs attention"),
+                        now,
+                        {"alert_id": fingerprint, "acknowledged": alert.acknowledged},
+                    )
+                elif bool(previous["acknowledged"]) != alert.acknowledged:
+                    changed = True
+                    self._insert_event(
+                        "rvwhisper.alert.acknowledged" if alert.acknowledged else "rvwhisper.alert.reopened",
+                        "normal" if alert.acknowledged else "warning",
+                        alert.title,
+                        "Acknowledged in RV Whisper" if alert.acknowledged else "Requires attention in RV Whisper",
+                        now,
+                        {"alert_id": fingerprint, "acknowledged": alert.acknowledged},
+                    )
+            for fingerprint, previous in existing.items():
+                if fingerprint in incoming:
+                    continue
+                changed = True
+                self._connection.execute("DELETE FROM active_alerts WHERE fingerprint = ?", (fingerprint,))
+                self._insert_event(
+                    "rvwhisper.alert.resolved",
+                    "normal",
+                    previous["title"],
+                    "Trigger condition cleared in RV Whisper",
+                    now,
+                    {"alert_id": fingerprint},
+                )
+        return changed
+
+    def active_alerts(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT fingerprint AS id, title, acknowledged, created_at, last_seen_at
+                   FROM active_alerts
+                   ORDER BY acknowledged ASC, created_at DESC"""
+            ).fetchall()
+        return [dict(row) | {"acknowledged": bool(row["acknowledged"])} for row in rows]
+
+    def _insert_event(
+        self,
+        event_type: str,
+        severity: str,
+        title: str,
+        detail: str,
+        occurred_at: str,
+        data: dict[str, Any],
+    ) -> None:
+        self._connection.execute(
+            "INSERT INTO events(event_type, severity, title, detail, occurred_at, data_json) VALUES(?, ?, ?, ?, ?, ?)",
+            (event_type, severity, title, detail, occurred_at, json.dumps(data)),
+        )
 
     def numeric_ranges(self, paths: list[str], hours: int = 24) -> dict[str, dict[str, Any]]:
         """Return real min/max values from retained samples for the requested time window."""

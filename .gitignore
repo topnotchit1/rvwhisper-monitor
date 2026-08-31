@@ -38,11 +38,14 @@ yarn-error.log*
 __pycache__/
 *.py[cod]
 .venv/
+.pytest_cache/
+.pytest-audit-*/
 /backend/data/
 /backend/captures/
 
 # site-specific sensor mapping can contain device and room identifiers
 /backend/config/sensor-map.json
+/backend/config/dashboard-profile.json
 
 # vercel
 .vercel

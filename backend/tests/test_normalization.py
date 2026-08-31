@@ -21,3 +21,43 @@ def test_old_reading_is_never_reported_as_current():
     api = snapshot.to_api(stale_after_seconds=150)
     assert api["readings"]["power.battery.soc"]["health"] == Health.STALE.value
     assert api["overall_health"] == Health.STALE.value
+
+
+def test_vendor_up_status_is_normalized_as_online():
+    normalizer = Normalizer([
+        FieldRule("Starlink", "InternetStatus", "network.internet.online", transform="boolean")
+    ])
+    payload = {"latest_points": [{"TimeStamp": 1_700_000_000, "InternetStatus": "Up"}]}
+    readings = normalizer.normalize("Starlink", payload)
+    assert readings[0].value is True
+
+
+def test_slow_sensor_can_define_its_own_freshness_window():
+    normalizer = Normalizer([
+        FieldRule("WiFi Status", "VPN", "network.rvm3.vpn_online", transform="boolean", stale_after_seconds=900)
+    ])
+    payload = {"latest_points": [{"TimeStamp": datetime.now(UTC).timestamp() - 600, "VPN": "Up"}]}
+    reading = normalizer.normalize("WiFi Status", payload)[0]
+
+    assert reading.to_api(stale_after_seconds=150)["health"] == Health.NORMAL.value
+
+
+def test_observed_ac_voltage_can_drive_connection_state():
+    normalizer = Normalizer([
+        FieldRule("Power Watchdog", "Voltage1", "power.ac.connected", transform="ac_connected")
+    ])
+    connected = normalizer.normalize("Power Watchdog", {"latest_points": [{"Voltage1": "121.2"}]})[0]
+    disconnected = normalizer.normalize("Power Watchdog", {"latest_points": [{"Voltage1": "0"}]})[0]
+
+    assert connected.value is True
+    assert disconnected.value is False
+
+
+def test_environment_readings_allow_normal_five_minute_sensor_cadence():
+    normalizer = Normalizer([
+        FieldRule("Living Area", "DegreesF", "environment.living.temperature", "°F", "number")
+    ])
+    payload = {"latest_points": [{"TimeStamp": datetime.now(UTC).timestamp() - 300, "DegreesF": "74"}]}
+    reading = normalizer.normalize("Living Area", payload)[0]
+
+    assert reading.to_api(stale_after_seconds=150)["health"] == Health.NORMAL.value

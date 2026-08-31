@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from rv_dashboard.model import Reading
+from rv_dashboard.alerts import ActiveAlert
 from rv_dashboard.store import Store
 
 
@@ -28,4 +29,24 @@ def test_store_calculates_numeric_ranges_from_retained_history(tmp_path):
     assert summary["min"] == 71
     assert summary["max"] == 76
     assert summary["samples"] == 3
+    store.close()
+
+
+def test_store_tracks_alert_acknowledgement_and_resolution(tmp_path):
+    store = Store(tmp_path / "dashboard.db")
+    alert = ActiveAlert("a1", "Freezer is warm", False, "2026-08-20T20:00:00")
+    assert store.sync_active_alerts([alert]) is True
+    assert store.active_alerts()[0]["acknowledged"] is False
+    assert store.sync_active_alerts([alert]) is False
+
+    acknowledged = ActiveAlert("a1", "Freezer is warm", True, "2026-08-20T20:00:00")
+    assert store.sync_active_alerts([acknowledged]) is True
+    assert store.active_alerts()[0]["acknowledged"] is True
+    assert store.sync_active_alerts([]) is True
+    assert store.active_alerts() == []
+    assert [event["event_type"] for event in store.recent_events(3)] == [
+        "rvwhisper.alert.resolved",
+        "rvwhisper.alert.acknowledged",
+        "rvwhisper.alert.active",
+    ]
     store.close()

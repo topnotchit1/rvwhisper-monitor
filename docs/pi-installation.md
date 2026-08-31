@@ -31,6 +31,12 @@ sudo bash deploy/install-pi.sh
 
 The installer creates a dedicated `rvdashboard` service account, a versioned release under `/opt/minnie-dashboard`, protected configuration under `/etc/minnie-dashboard`, persistent data under `/var/lib/minnie-dashboard`, and two systemd services. Existing credentials and sensor mappings are preserved during later installs.
 
+When run interactively, the installer offers to configure the RV display name and direct RVM3 address. These values are installation-specific and are never written into the Git checkout. Run the configuration step again at any time with:
+
+```bash
+sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
+```
+
 ## Verify demo mode first
 
 ```bash
@@ -61,7 +67,21 @@ First verify that every installed sensor appears correctly in the official RV Wh
 sudoedit /etc/minnie-dashboard/dashboard.env
 ```
 
-Leave `DASHBOARD_MODE=demo` while entering `RVW_ID`, `RVW_USERNAME`, and `RVW_PASSWORD`. Keep the initial poll interval at 60 seconds.
+Leave `DASHBOARD_MODE=demo` while configuring access. When the Pi and RVM3 share a trusted LAN, prefer:
+
+```text
+RVW_ACCESS_MODE=local
+RVW_BASE_URL=http://<device-hostname-or-lan-ip>
+RVW_SYSTEM_PATH=
+RVW_USERNAME=
+RVW_PASSWORD=
+```
+
+The direct address must be the RVM3 itself, not `access.rvwhisper.com`. If the RVM3 serves its dashboard beneath a path instead of at its root, place that path in `RVW_SYSTEM_PATH`. A reserved DHCP address or stable local hostname prevents the address from changing.
+
+Anonymous local reading is preferred where the RVM3 permits it. Administrator credentials printed on the device are not needed for normal read-only collection and must not be copied into GitHub. A future acknowledgement feature may require protected local credentials; the installer will collect them only after the vendor login flow is validated and the feature is explicitly enabled.
+
+For gateway fallback, use `RVW_ACCESS_MODE=gateway`, `RVW_BASE_URL=https://access.rvwhisper.com`, and enter `RVW_USERNAME` and `RVW_PASSWORD`. Keep the initial poll interval at 60 seconds in either mode.
 
 Capture one private sample from every discovered sensor:
 
@@ -87,6 +107,16 @@ Map only fields observed in real payloads. Do not infer watts, gallons, humidity
 - dog area, coach, refrigerator, and freezer temperature;
 - humidity only where a sensor actually reports it;
 - fresh, gray, black, and propane percentages.
+
+For a newly installed Power Watchdog, identify its captured file by sensor name and map only values actually present in that payload. Expected dashboard destinations are `power.ac.connected`, `power.ac.voltage`, `power.ac.current`, `power.ac.frequency`, and `power.ac.power`, but a destination must be omitted when the RVM3 payload does not provide a corresponding measurement. Do not calculate real power from volts multiplied by amps.
+
+The optional built-in Wi-Fi Status sensor is useful diagnostic context. If installed, capture it like any other RVM3 sensor and map only observed fields under `network.rvm3.*` (for example signal or connectivity state when actually supplied). Its ten-minute reporting cadence must have a separate freshness threshold so the dashboard does not incorrectly mark it stale after the normal telemetry interval. This local sensor describes the RVM3's view of Wi-Fi; it is not a cloud-side proof that the gateway VPN is reachable.
+
+## Customize names and sensor counts
+
+The protected file `/etc/minnie-dashboard/dashboard-profile.json` controls presentation. Change the vehicle name and monogram, disable sections that are not installed, add or remove climate and tank items, edit labels, and choose Home items with the `home` property. Home intentionally displays at most four climate items and four tanks; all configured items appear on their diagnostic pages.
+
+The profile contains normalized paths, never vendor serial numbers. The separate `/etc/minnie-dashboard/sensor-map.json` connects the owner's observed RV Whisper fields to those paths. Both files are preserved across upgrades and excluded from Git.
 
 ## Switch to live mode
 
