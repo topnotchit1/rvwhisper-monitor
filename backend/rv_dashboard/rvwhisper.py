@@ -140,6 +140,12 @@ class RVWhisperClient:
         response.raise_for_status()
         return response.text
 
+    async def fetch_sensor_page(self, sensor: Sensor) -> str:
+        """Return a sensor detail page for its read-only alert summary."""
+        response = await self._client.get(f"{self.system_path}/sensor", params={"sensor_id": sensor.id})
+        response.raise_for_status()
+        return response.text
+
     @staticmethod
     def _extract(text: str, pattern: str, label: str) -> str:
         match = re.search(pattern, text, re.IGNORECASE)

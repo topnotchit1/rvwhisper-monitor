@@ -10,8 +10,9 @@ The custom application is not an alarm system. RV Whisper independently owns ale
 2. A configurable collector polls no faster than 30 seconds; 60 seconds is the default.
 3. A rule-based normalizer translates observed vendor fields to stable paths.
 4. Changed readings update the current snapshot, append to SQLite, and publish to the event bus.
-5. Server-Sent Events push one coherent snapshot to all connected browsers.
-6. The UI computes freshness from the observation timestamp and displays stale state explicitly.
+5. Active RV Whisper conditions are mirrored from the consolidated alert page or, in local mode, conservatively from public per-sensor alert summaries.
+6. Server-Sent Events push coherent state and alert updates to all connected browsers.
+7. The UI computes freshness from the observation timestamp and displays stale state explicitly.
 
 ## Normalized model
 
@@ -35,6 +36,7 @@ SQLite stores one current row per normalized path, 24–72 hours of high-resolut
 
 - Gateway authentication expiry: reauthenticate and rediscover sensors.
 - Invalid or changed HTML/JSON: record collector failure; retain old values only as stale context.
+- Alert page authentication or partial sensor-page failure: preserve the last successful active-alert set; never infer that alerts cleared.
 - Internet outage while using local RVM3 access: dashboard telemetry continues; RV Whisper remote access and notifications retain their own independent internet requirements.
 - RVM3 LAN outage: exponential retry up to 15 minutes; no rapid hammering.
 - Browser disconnect: EventSource reconnects; one state snapshot is sent immediately.

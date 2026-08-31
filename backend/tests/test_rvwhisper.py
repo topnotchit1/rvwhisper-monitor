@@ -19,6 +19,8 @@ async def test_local_mode_skips_login_and_uses_root_ajax_endpoint():
             )
         if request.method == "POST" and request.url.path == "/wp-admin/admin-ajax.php":
             return httpx.Response(200, json={"data": [{"Volts": 121}]})
+        if request.method == "GET" and request.url.path == "/sensor":
+            return httpx.Response(200, text="<h3>Current Alerts</h3><div>No Alerts!</div>")
         return httpx.Response(404)
 
     client = RVWhisperClient(
@@ -30,18 +32,22 @@ async def test_local_mode_skips_login_and_uses_root_ajax_endpoint():
     try:
         sensors = await client.authenticate()
         payload = await client.fetch_sensor(sensors[0])
+        sensor_page = await client.fetch_sensor_page(sensors[0])
     finally:
         await client.close()
 
     assert [(sensor.id, sensor.name) for sensor in sensors] == [("42", "Power Watchdog")]
     assert payload == {"data": [{"Volts": 121}]}
+    assert "Current Alerts" in sensor_page
     assert [(request.method, request.url.path) for request in requests] == [
         ("GET", "/"),
         ("POST", "/wp-admin/admin-ajax.php"),
+        ("GET", "/sensor"),
     ]
     form = parse_qs(requests[1].content.decode(), keep_blank_values=True)
     assert form["sensor"] == ["42"]
     assert form["bt_nonce"] == [""]
+    assert requests[2].url.params["sensor_id"] == "42"
 
 
 @pytest.mark.asyncio

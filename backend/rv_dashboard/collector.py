@@ -5,7 +5,7 @@ import logging
 
 import httpx
 
-from .alerts import AlertParseError, parse_active_alerts
+from .alerts import AlertParseError, parse_active_alerts, parse_sensor_active_alerts
 from .event_bus import EventBus
 from .model import Snapshot
 from .normalization import Normalizer
@@ -52,7 +52,16 @@ class Collector:
                     self.store.save_readings(readings)
                 try:
                     alert_html = await self.client.fetch_alert_settings()
-                    alerts_changed = self.store.sync_active_alerts(parse_active_alerts(alert_html))
+                    try:
+                        active_alerts = parse_active_alerts(alert_html)
+                    except AlertParseError:
+                        if self.client.access_mode != "local":
+                            raise
+                        active_alerts = []
+                        for sensor in sensors:
+                            sensor_html = await self.client.fetch_sensor_page(sensor)
+                            active_alerts.extend(parse_sensor_active_alerts(sensor_html, sensor.id))
+                    alerts_changed = self.store.sync_active_alerts(active_alerts)
                     if alerts_changed:
                         await self.bus.publish({"type": "alerts", "alerts": self.store.active_alerts()})
                 except (AlertParseError, RVWhisperError, httpx.HTTPError, OSError, TimeoutError) as exc:

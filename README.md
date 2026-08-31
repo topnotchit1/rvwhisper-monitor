@@ -36,8 +36,9 @@ The screenshots below show the representative demo dataset. Live mode uses mappe
 - Conservative energy flow that never invents source attribution from net shunt current
 - Normalized readings such as `power.battery.soc` and `environment.dog.temperature`
 - RV Whisper collector supporting direct, credential-free RVM3 access on a trusted LAN and authenticated gateway fallback
+- Read-only active-alert mirroring, including a conservative local sensor-page fallback when the consolidated alert page requires a device login
 - Automatic session recovery, bounded polling, internal event bus, SSE browser updates, and SQLite history
-- Demo mode that runs without RV hardware; live mode requires explicit credentials and an observed sensor map
+- Demo mode that runs without RV hardware; live mode requires an observed sensor map and either a direct RVM3 address or gateway credentials
 
 ## Architecture
 
@@ -56,6 +57,8 @@ PowerMon direct BLE (phase 2) ───────────────► L
 External acquisition may poll conservatively. Everything after collection is change-driven. The browser never polls individual sensors.
 
 Direct LAN collection is preferred because it does not consume internet data and keeps the display working during an internet outage. Gateway access remains available as a fallback.
+
+Alert evaluation and notification delivery remain entirely inside RV Whisper. The dashboard mirrors active conditions read-only. On local RVM3 firmware that protects the consolidated alert page, the collector reads the public per-sensor alert summaries instead. Those summaries expose alert titles but not acknowledgement metadata, so the dashboard conservatively labels them **Needs attention**. A changed or unavailable vendor page never clears previously observed alerts.
 
 ## Run the dashboard UI
 
@@ -90,6 +93,7 @@ The API listens on `http://localhost:8080` by default. Set `NEXT_PUBLIC_DASHBOAR
 3. Copy `backend/config/sensor-map.example.json` to `sensor-map.json` and map only observed fields.
 4. Prefer `RVW_ACCESS_MODE=local` with `RVW_BASE_URL` set to the RVM3's direct LAN address. Gateway mode additionally requires `RVW_USERNAME` and `RVW_PASSWORD`.
 5. Start with `RVW_POLL_SECONDS=60`; do not reduce it until RV Whisper confirms an acceptable cadence.
+6. Trigger one noncritical test alert and confirm that it appears on Home and Events without changing or acknowledging it in the dashboard.
 
 LAN addresses, credentials, and real sensor mappings belong in the Pi's protected environment file and must never be committed.
 
@@ -146,4 +150,4 @@ Data-access behavior is derived from [Yeraze/rvwhisper-monitor](https://github.c
 
 ## Status
 
-The software foundation and hardware-independent MVP are ready. Live sensor mapping is intentionally pending actual RVM3, Hughes, PowerMon, and SeeLeveL payloads. See the open-question drafts before making hardware-specific assumptions.
+The software foundation and hardware-independent MVP are ready. Direct-LAN RVM3 telemetry and read-only active-alert mirroring have been validated against observed firmware behavior. Each installation still requires its own private sensor map and dashboard profile; unsupported or uninstalled battery, tank, and other hardware remains **Not reported** rather than being estimated. Alert acknowledgement is intentionally disabled pending authenticated, noncritical validation. See the open-question drafts before making additional hardware-specific assumptions.
