@@ -37,7 +37,9 @@ When run interactively, the installer offers a guided configuration wizard. It c
 sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
 ```
 
-The wizard does not change `sensor-map.json`; vendor field mapping stays a separate, evidence-based step after private payload capture. It also never asks for Wi-Fi credentials. Gateway passwords, when used, are entered without echo and remain only in the root-owned environment file.
+The wizard does not change `sensor-map.json`; vendor field mapping stays a separate, evidence-based step after private payload capture. It also never asks for Wi-Fi credentials. Gateway passwords, when used, are entered without echo and remain only in the root-owned environment file. In local mode it can optionally store a separate device-local account for read-only acknowledged-alert status. Cloud credentials are never reused for that login.
+
+Local RVM3 firmware may serve authenticated pages over plain HTTP. Configure device-local alert credentials only on the trusted RV LAN, use a unique password when possible, and change any vendor factory password if the installed firmware supports it. Anonymous local telemetry remains available when these optional credentials are omitted or rejected.
 
 Validate the current profile and environment file without changing them:
 

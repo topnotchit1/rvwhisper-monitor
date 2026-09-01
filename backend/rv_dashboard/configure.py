@@ -229,7 +229,38 @@ def build_configuration(
         if connection == "local":
             env_updates["RVW_USERNAME"] = ""
             env_updates["RVW_PASSWORD"] = ""
+            existing_local_username = environment.get("RVW_LOCAL_USERNAME", "")
+            existing_local_password = environment.get("RVW_LOCAL_PASSWORD", "")
+            use_local_alert_auth = prompts.yes_no(
+                "Use device-local credentials for acknowledged alert status?",
+                bool(existing_local_username and existing_local_password),
+            )
+            if use_local_alert_auth:
+                local_username = prompts.text(
+                    "RVM3 local username",
+                    existing_local_username,
+                    maximum=160,
+                )
+                local_password = prompts.secret(
+                    "RVM3 local password",
+                    has_existing=bool(existing_local_password),
+                )
+                if local_password is None and not existing_local_password:
+                    prompts.output(
+                        "Local credentials are incomplete; acknowledged alert status will use the public fallback."
+                    )
+                    env_updates["RVW_LOCAL_USERNAME"] = ""
+                    env_updates["RVW_LOCAL_PASSWORD"] = ""
+                else:
+                    env_updates["RVW_LOCAL_USERNAME"] = local_username
+                    if local_password is not None:
+                        env_updates["RVW_LOCAL_PASSWORD"] = local_password
+            else:
+                env_updates["RVW_LOCAL_USERNAME"] = ""
+                env_updates["RVW_LOCAL_PASSWORD"] = ""
         else:
+            env_updates["RVW_LOCAL_USERNAME"] = ""
+            env_updates["RVW_LOCAL_PASSWORD"] = ""
             username = prompts.text(
                 "Gateway username",
                 environment.get("RVW_USERNAME", ""),
@@ -295,6 +326,11 @@ def _summary(profile: dict[str, Any], environment: dict[str, str]) -> list[str]:
         f"RV: {profile['vehicle']['name']} ({profile['vehicle']['monogram']})",
         f"Mode: {environment.get('DASHBOARD_MODE', 'demo')}",
         f"RV Whisper access: {environment.get('RVW_ACCESS_MODE', 'local')}",
+        "Local alert authentication: " + (
+            "configured"
+            if environment.get("RVW_LOCAL_USERNAME") and environment.get("RVW_LOCAL_PASSWORD")
+            else "not configured"
+        ),
         f"Enabled sections: {', '.join(enabled) or 'none'}",
         f"Climate items: {len(sections['climate']['items'])}",
         f"Tank items: {len(sections['tanks']['items'])}",

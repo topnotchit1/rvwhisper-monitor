@@ -35,7 +35,8 @@ The screenshots below show the representative demo dataset. Live mode uses mappe
 - Diagnostic shore-loss summary showing battery load, dog temperature, and connectivity
 - Conservative energy flow that never invents source attribution from net shunt current
 - Normalized readings such as `power.battery.soc` and `environment.dog.temperature`
-- RV Whisper collector supporting direct, credential-free RVM3 access on a trusted LAN and authenticated gateway fallback
+- RV Whisper collector supporting direct, credential-free RVM3 telemetry on a trusted LAN and authenticated gateway fallback
+- Optional, separate device-local authentication for read-only acknowledged-alert status; cloud credentials are never reused locally
 - Read-only active-alert mirroring, including a conservative local sensor-page fallback when the consolidated alert page requires a device login
 - Automatic session recovery, bounded polling, internal event bus, SSE browser updates, and SQLite history
 - Demo mode that runs without RV hardware; live mode requires an observed sensor map and either a direct RVM3 address or gateway credentials
@@ -109,9 +110,10 @@ The API listens on `http://localhost:8080` by default. Set `NEXT_PUBLIC_DASHBOAR
 1. Operate in demo mode first.
 2. Capture real JSON for each installed sensor.
 3. Copy `backend/config/sensor-map.example.json` to `sensor-map.json` and map only observed fields.
-4. Prefer `RVW_ACCESS_MODE=local` with `RVW_BASE_URL` set to the RVM3's direct LAN address. Gateway mode additionally requires `RVW_USERNAME` and `RVW_PASSWORD`.
-5. Start with `RVW_POLL_SECONDS=60`; do not reduce it until RV Whisper confirms an acceptable cadence.
-6. Trigger one noncritical test alert and confirm that it appears on Home and Events without changing or acknowledging it in the dashboard.
+4. Prefer `RVW_ACCESS_MODE=local` with `RVW_BASE_URL` set to the RVM3's direct LAN address. Gateway mode additionally requires cloud-only `RVW_USERNAME` and `RVW_PASSWORD`.
+5. If acknowledged-alert status is needed, optionally set device-only `RVW_LOCAL_USERNAME` and `RVW_LOCAL_PASSWORD` in the protected environment. Never substitute cloud credentials or commit local credentials.
+6. Start with `RVW_POLL_SECONDS=60`; do not reduce it until RV Whisper confirms an acceptable cadence.
+7. Trigger one noncritical test alert and confirm that it appears on Home and Events without changing or acknowledging it in the dashboard.
 
 LAN addresses, credentials, and real sensor mappings belong in the Pi's protected environment file and must never be committed.
 
@@ -134,7 +136,7 @@ Each installation keeps its identity, RVM3 address, sensor mapping, and display 
 sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
 ```
 
-`dashboard-profile.json` controls the RV name, monogram, enabled sections, climate sensor labels/count, tank labels/count, and which items appear on Home. `sensor-map.json` independently maps the fields actually reported by that owner's RV Whisper installation to normalized dashboard paths. The home screen shows up to four selected climate readings and four selected tanks; detail pages show every configured item.
+`dashboard-profile.json` controls the RV name, monogram, enabled sections, climate sensor labels/count, tank labels/count, and which items appear on Home. `sensor-map.json` independently maps the fields actually reported by that owner's RV Whisper installation to normalized dashboard paths. The wizard can optionally store the separate device-local account used to read acknowledged-alert status. The home screen shows up to four selected climate readings and four selected tanks; detail pages show every configured item.
 
 Validate the current protected configuration without changing it:
 
@@ -142,7 +144,7 @@ Validate the current protected configuration without changing it:
 sudo /opt/minnie-dashboard/current/backend/.venv/bin/rv-dashboard-configure --check
 ```
 
-Wi-Fi names and passwords are managed by Raspberry Pi OS, not by the dashboard. The dashboard profile, RVM3 LAN address, credentials, and real sensor names remain Pi-local and are never committed.
+Wi-Fi names and passwords are managed by Raspberry Pi OS, not by the dashboard. The dashboard profile, RVM3 LAN address, credentials, and real sensor names remain Pi-local and are never committed. Device-local authentication may traverse plain HTTP on supported RVM3 firmware, so use it only on the trusted RV LAN and change any factory password when the device supports that operation.
 
 ## Safety and data freshness
 

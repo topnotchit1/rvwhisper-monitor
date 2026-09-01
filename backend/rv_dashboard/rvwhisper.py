@@ -13,6 +13,10 @@ class RVWhisperError(RuntimeError):
     pass
 
 
+class LocalAlertAuthenticationError(RVWhisperError):
+    """Device-local alert login failed without affecting LAN telemetry."""
+
+
 @dataclass(frozen=True)
 class Sensor:
     id: str
@@ -38,15 +42,21 @@ class RVWhisperClient:
         access_mode: str = "gateway",
         base_url: str | None = None,
         system_path: str | None = None,
+        local_username: str = "",
+        local_password: str = "",
         transport: httpx.AsyncBaseTransport | None = None,
     ):
         if access_mode not in {"gateway", "local"}:
             raise ValueError("RVW_ACCESS_MODE must be 'gateway' or 'local'")
         if access_mode == "gateway" and (not username or not password):
             raise ValueError("Gateway access requires RVW_USERNAME and RVW_PASSWORD")
+        if access_mode == "local" and bool(local_username) != bool(local_password):
+            raise ValueError("Local alert access requires both RVW_LOCAL_USERNAME and RVW_LOCAL_PASSWORD")
         self.rvm_id = rvm_id
         self.username = username
         self.password = password
+        self.local_username = local_username
+        self.local_password = local_password
         self.access_mode = access_mode
         self.base_url = (base_url or self.GATEWAY_URL).rstrip("/")
         parsed_url = httpx.URL(self.base_url)
@@ -132,12 +142,68 @@ class RVWhisperClient:
         changes back to the service.
         """
         response = await self._client.get(f"{self.system_path}/alert-settings/")
+        if (
+            self.access_mode == "local"
+            and self.has_local_alert_credentials
+            and (response.status_code in {401, 403} or self._is_login_response(response))
+        ):
+            if retry_auth:
+                return await self._authenticate_local_alerts()
+            raise LocalAlertAuthenticationError("RVM3 local alert authentication expired")
         if response.status_code in {401, 403} and retry_auth and self.access_mode == "gateway":
             await self.authenticate()
             return await self.fetch_alert_settings(retry_auth=False)
         if response.status_code in {401, 403}:
             raise RVWhisperError("RV Whisper rejected the refreshed alert session")
         response.raise_for_status()
+        return response.text
+
+    @property
+    def has_local_alert_credentials(self) -> bool:
+        return bool(self.local_username and self.local_password)
+
+    @staticmethod
+    def _is_login_response(response: httpx.Response) -> bool:
+        path = response.url.path.rstrip("/").casefold()
+        if path.endswith("/wp-login.php"):
+            return True
+        return bool(
+            re.search(r'<form[^>]+id=["\']loginform["\']', response.text, re.IGNORECASE)
+            or (
+                re.search(r'name=["\']log["\']', response.text, re.IGNORECASE)
+                and re.search(r'name=["\']pwd["\']', response.text, re.IGNORECASE)
+            )
+        )
+
+    async def _authenticate_local_alerts(self) -> str:
+        """Authenticate only the local alert session using device credentials.
+
+        Telemetry remains available through the anonymous LAN endpoints. Cloud
+        credentials are intentionally never reused for this WordPress login.
+        """
+        if not self.has_local_alert_credentials:
+            raise LocalAlertAuthenticationError("RVM3 local alert credentials are not configured")
+        try:
+            login_page = await self._client.get("/wp-login.php")
+            login_page.raise_for_status()
+            alert_path = f"{self.system_path}/alert-settings/"
+            response = await self._client.post(
+                "/wp-login.php",
+                data={
+                    "log": self.local_username,
+                    "pwd": self.local_password,
+                    "wp-submit": "Log In",
+                    "redirect_to": f"{self.base_url}{alert_path}",
+                    "testcookie": "1",
+                },
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise LocalAlertAuthenticationError("RVM3 local alert authentication failed") from exc
+        if self._is_login_response(response) or not re.search(
+            r'id=["\']view-alerts["\']', response.text, re.IGNORECASE
+        ):
+            raise LocalAlertAuthenticationError("RVM3 local alert authentication failed")
         return response.text
 
     async def fetch_sensor_page(self, sensor: Sensor) -> str:
@@ -177,4 +243,6 @@ def client_from_environment(environment: Mapping[str, str] | None = None) -> RVW
         access_mode=access_mode,
         base_url=base_url,
         system_path=system_path,
+        local_username=values.get("RVW_LOCAL_USERNAME", "").strip(),
+        local_password=values.get("RVW_LOCAL_PASSWORD", ""),
     )

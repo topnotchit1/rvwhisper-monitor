@@ -9,7 +9,7 @@ from .alerts import AlertParseError, parse_active_alerts, parse_sensor_active_al
 from .event_bus import EventBus
 from .model import Snapshot
 from .normalization import Normalizer
-from .rvwhisper import RVWhisperClient, RVWhisperError
+from .rvwhisper import LocalAlertAuthenticationError, RVWhisperClient, RVWhisperError
 from .store import Store
 
 LOGGER = logging.getLogger(__name__)
@@ -51,12 +51,16 @@ class Collector:
                 if readings:
                     self.store.save_readings(readings)
                 try:
-                    alert_html = await self.client.fetch_alert_settings()
                     try:
+                        alert_html = await self.client.fetch_alert_settings()
                         active_alerts = parse_active_alerts(alert_html)
-                    except AlertParseError:
+                    except (AlertParseError, LocalAlertAuthenticationError) as exc:
                         if self.client.access_mode != "local":
                             raise
+                        LOGGER.warning(
+                            "Authenticated RVM3 alert view unavailable; using conservative public fallback: %s",
+                            exc,
+                        )
                         active_alerts = []
                         for sensor in sensors:
                             sensor_html = await self.client.fetch_sensor_page(sensor)

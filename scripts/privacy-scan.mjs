@@ -31,7 +31,7 @@ const rules = [
 
 async function walk(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (ignored.has(entry.name)) continue;
+    if (ignored.has(entry.name) || entry.name.startsWith(".pytest-codex-")) continue;
     if (entry.name.startsWith(".env") && entry.name !== ".env.example") continue;
     const path = join(directory, entry.name);
     if (ignoredRuntimePaths.has(relative(root, path).replaceAll("\\", "/"))) continue;

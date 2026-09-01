@@ -105,8 +105,41 @@ def test_wizard_configures_local_access_sections_and_variable_climate_items():
         "RVW_SYSTEM_PATH": "",
         "RVW_USERNAME": "",
         "RVW_PASSWORD": "",
+        "RVW_LOCAL_USERNAME": "",
+        "RVW_LOCAL_PASSWORD": "",
         "DASHBOARD_MODE": "live",
     }
+
+
+def test_wizard_keeps_device_local_credentials_separate_from_gateway_credentials():
+    prompts = ScriptedPrompter(
+        choices={"Connection type": ["local"]},
+        text={
+            "RV Whisper base URL": ["http://rvm.local"],
+            "RVM3 local username": ["device-user"],
+        },
+        yes_no={
+            "Use device-local credentials for acknowledged alert status?": [True],
+            "Enable live mode now?": [True],
+        },
+        secret={"RVM3 local password": ["device-password"]},
+    )
+
+    _profile, updates = build_configuration(
+        load_profile(None),
+        {
+            "DASHBOARD_MODE": "demo",
+            "RVW_USERNAME": "cloud-user",
+            "RVW_PASSWORD": "cloud-password",
+        },
+        prompts,
+    )
+
+    assert updates["RVW_USERNAME"] == ""
+    assert updates["RVW_PASSWORD"] == ""
+    assert updates["RVW_LOCAL_USERNAME"] == "device-user"
+    assert updates["RVW_LOCAL_PASSWORD"] == "device-password"
+    assert updates["DASHBOARD_MODE"] == "live"
 
 
 def test_incomplete_gateway_credentials_keep_demo_mode():

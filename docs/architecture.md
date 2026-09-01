@@ -36,7 +36,8 @@ SQLite stores one current row per normalized path, 24–72 hours of high-resolut
 
 - Gateway authentication expiry: reauthenticate and rediscover sensors.
 - Invalid or changed HTML/JSON: record collector failure; retain old values only as stale context.
-- Alert page authentication or partial sensor-page failure: preserve the last successful active-alert set; never infer that alerts cleared.
+- Local alert-page authentication failure: fall back to public sensor summaries without interrupting telemetry; preserve the last successful active-alert set if the fallback is incomplete.
+- Alert-page or partial sensor-page failure: never infer that alerts cleared.
 - Internet outage while using local RVM3 access: dashboard telemetry continues; RV Whisper remote access and notifications retain their own independent internet requirements.
 - RVM3 LAN outage: exponential retry up to 15 minutes; no rapid hammering.
 - Browser disconnect: EventSource reconnects; one state snapshot is sent immediately.

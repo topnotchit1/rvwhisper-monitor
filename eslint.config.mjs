@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "outputs/**",
     "work/**",
+    "**/.pytest*/**",
     "next-env.d.ts",
   ]),
   eslint.configs.recommended,
