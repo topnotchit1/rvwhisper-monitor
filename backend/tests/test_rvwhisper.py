@@ -140,6 +140,144 @@ async def test_local_alert_authentication_uses_separate_device_credentials():
 
 
 @pytest.mark.asyncio
+async def test_local_alert_authentication_handles_logged_out_placeholder_page():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if "wordpress_logged_in_test" in request.headers.get("cookie", ""):
+                return httpx.Response(200, text='<div id="view-alerts"></div>')
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={
+                    "location": "/alert-settings/",
+                    "set-cookie": "wordpress_logged_in_test=session",
+                },
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        html = await client.fetch_alert_settings()
+    finally:
+        await client.close()
+
+    assert 'id="view-alerts"' in html
+    assert [(request.method, request.url.path) for request in requests] == [
+        ("GET", "/alert-settings/"),
+        ("GET", "/wp-login.php"),
+        ("POST", "/wp-login.php"),
+        ("GET", "/alert-settings/"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_local_alert_authentication_fetches_alerts_when_device_ignores_redirect():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        logged_in = "wordpress_logged_in_test" in request.headers.get("cookie", "")
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if logged_in:
+                return httpx.Response(200, text='<div id="view-alerts"></div>')
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={"location": "/", "set-cookie": "wordpress_logged_in_test=session"},
+            )
+        if request.method == "GET" and request.url.path == "/" and logged_in:
+            return httpx.Response(200, text="<html><main>Dashboard</main></html>")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        html = await client.fetch_alert_settings()
+    finally:
+        await client.close()
+
+    assert 'id="view-alerts"' in html
+    assert [(request.method, request.url.path) for request in requests] == [
+        ("GET", "/alert-settings/"),
+        ("GET", "/wp-login.php"),
+        ("POST", "/wp-login.php"),
+        ("GET", "/"),
+        ("GET", "/alert-settings/"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_local_alert_authentication_does_not_leak_cookies_into_telemetry_session():
+    telemetry_request: httpx.Request | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal telemetry_request
+        logged_in = "wordpress_logged_in_test" in request.headers.get("cookie", "")
+        if request.method == "GET" and request.url.path == "/":
+            if logged_in:
+                return httpx.Response(200, text="<html><main>Dashboard</main></html>")
+            return httpx.Response(
+                200,
+                text='"ajax_nonce":"nonce-1" sensor?sensor_id=7" title="Battery"',
+            )
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if logged_in:
+                return httpx.Response(200, text='<div id="view-alerts"></div>')
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={"location": "/", "set-cookie": "wordpress_logged_in_test=session"},
+            )
+        if request.method == "POST" and request.url.path == "/wp-admin/admin-ajax.php":
+            telemetry_request = request
+            return httpx.Response(200, json={})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        sensors = await client.authenticate()
+        await client.fetch_alert_settings()
+        await client.fetch_sensor(sensors[0])
+    finally:
+        await client.close()
+
+    assert telemetry_request is not None
+    assert "wordpress_logged_in" not in telemetry_request.headers.get("cookie", "")
+
+
+@pytest.mark.asyncio
 async def test_rejected_local_alert_credentials_raise_sanitized_error():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "GET" and request.url.path == "/alert-settings/":

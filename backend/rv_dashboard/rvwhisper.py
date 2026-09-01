@@ -74,8 +74,20 @@ class RVWhisperClient:
             follow_redirects=True,
             transport=transport,
         )
+        self._local_alert_client = (
+            httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=timeout_seconds,
+                follow_redirects=True,
+                transport=transport,
+            )
+            if access_mode == "local" and local_username and local_password
+            else None
+        )
 
     async def close(self) -> None:
+        if self._local_alert_client is not None:
+            await self._local_alert_client.aclose()
         await self._client.aclose()
 
     async def authenticate(self) -> list[Sensor]:
@@ -141,11 +153,16 @@ class RVWhisperClient:
         HTML as vendor input and never posts acknowledgement or configuration
         changes back to the service.
         """
-        response = await self._client.get(f"{self.system_path}/alert-settings/")
+        alert_client = self._local_alert_client or self._client
+        response = await alert_client.get(f"{self.system_path}/alert-settings/")
         if (
             self.access_mode == "local"
             and self.has_local_alert_credentials
-            and (response.status_code in {401, 403} or self._is_login_response(response))
+            and (
+                response.status_code in {401, 403}
+                or self._is_login_response(response)
+                or not self._has_alert_view(response.text)
+            )
         ):
             if retry_auth:
                 return await self._authenticate_local_alerts()
@@ -175,6 +192,10 @@ class RVWhisperClient:
             )
         )
 
+    @staticmethod
+    def _has_alert_view(html: str) -> bool:
+        return bool(re.search(r'id=["\']view-alerts["\']', html, re.IGNORECASE))
+
     async def _authenticate_local_alerts(self) -> str:
         """Authenticate only the local alert session using device credentials.
 
@@ -183,11 +204,14 @@ class RVWhisperClient:
         """
         if not self.has_local_alert_credentials:
             raise LocalAlertAuthenticationError("RVM3 local alert credentials are not configured")
+        alert_client = self._local_alert_client
+        if alert_client is None:
+            raise LocalAlertAuthenticationError("RVM3 local alert session is not configured")
         try:
-            login_page = await self._client.get("/wp-login.php")
+            login_page = await alert_client.get("/wp-login.php")
             login_page.raise_for_status()
             alert_path = f"{self.system_path}/alert-settings/"
-            response = await self._client.post(
+            response = await alert_client.post(
                 "/wp-login.php",
                 data={
                     "log": self.local_username,
@@ -198,11 +222,12 @@ class RVWhisperClient:
                 },
             )
             response.raise_for_status()
+            if not self._is_login_response(response) and not self._has_alert_view(response.text):
+                response = await alert_client.get(alert_path)
+                response.raise_for_status()
         except httpx.HTTPError as exc:
             raise LocalAlertAuthenticationError("RVM3 local alert authentication failed") from exc
-        if self._is_login_response(response) or not re.search(
-            r'id=["\']view-alerts["\']', response.text, re.IGNORECASE
-        ):
+        if self._is_login_response(response) or not self._has_alert_view(response.text):
             raise LocalAlertAuthenticationError("RVM3 local alert authentication failed")
         return response.text
 
