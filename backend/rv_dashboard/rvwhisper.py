@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from collections.abc import Mapping
@@ -7,6 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from .alerts import ActiveAlert, AlertParseError, parse_active_alerts, parse_alert_action_context
 
 
 class RVWhisperError(RuntimeError):
@@ -17,10 +20,29 @@ class LocalAlertAuthenticationError(RVWhisperError):
     """Device-local alert login failed without affecting LAN telemetry."""
 
 
+class AlertAcknowledgementError(RVWhisperError):
+    """A dashboard acknowledgement could not be safely completed."""
+
+
+class AlertAcknowledgementStale(AlertAcknowledgementError):
+    """The requested dashboard alert no longer identifies one current alert."""
+
+
+class AlertAcknowledgementUncertain(AlertAcknowledgementError):
+    """RV Whisper did not provide authoritative confirmation after one write."""
+
+
 @dataclass(frozen=True)
 class Sensor:
     id: str
     name: str
+
+
+@dataclass(frozen=True)
+class AlertAcknowledgementResult:
+    status: str
+    alert: ActiveAlert
+    active_alerts: list[ActiveAlert]
 
 
 class RVWhisperClient:
@@ -68,6 +90,7 @@ class RVWhisperClient:
         configured_path = default_path if system_path is None else system_path
         self.system_path = f"/{configured_path.strip('/')}" if configured_path.strip("/") else ""
         self._nonce: str | None = None
+        self._alert_action_lock = asyncio.Lock()
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=timeout_seconds,
@@ -230,6 +253,83 @@ class RVWhisperClient:
         if self._is_login_response(response) or not self._has_alert_view(response.text):
             raise LocalAlertAuthenticationError("RVM3 local alert authentication failed")
         return response.text
+
+    async def acknowledge_alert(self, fingerprint: str) -> AlertAcknowledgementResult:
+        """Acknowledge exactly one current local alert and verify the result.
+
+        The lock plus authoritative reread makes sequential and concurrent
+        duplicate requests idempotent: only the first unacknowledged instance
+        can reach the vendor write endpoint.
+        """
+        if self.access_mode != "local" or not self.has_local_alert_credentials:
+            raise AlertAcknowledgementError("Local authenticated alert access is required")
+        alert_client = self._local_alert_client
+        if alert_client is None:
+            raise AlertAcknowledgementError("Local alert session is not configured")
+
+        async with self._alert_action_lock:
+            try:
+                context = parse_alert_action_context(await self.fetch_alert_settings())
+            except (AlertParseError, RVWhisperError, httpx.HTTPError) as exc:
+                raise AlertAcknowledgementError(
+                    "Current RV Whisper acknowledgement controls are unavailable"
+                ) from exc
+            matches = [alert for alert in context.alerts if alert.fingerprint == fingerprint]
+            if len(matches) != 1:
+                raise AlertAcknowledgementStale("Alert is no longer one current RV Whisper instance")
+            current = matches[0]
+            if current.acknowledged:
+                return AlertAcknowledgementResult("already_acknowledged", current, context.alerts)
+            if not current.vendor_id:
+                raise AlertAcknowledgementError("RV Whisper did not expose an acknowledgement control for this alert")
+
+            try:
+                response = await alert_client.post(
+                    f"{self.system_path}/wp-admin/admin-ajax.php",
+                    data={
+                        "action": "acknowledge_alert",
+                        "user_id": context.user_id,
+                        "alert_id": current.vendor_id,
+                        "bt_nonce": context.nonce,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                return await self._resolve_ambiguous_acknowledgement(fingerprint, exc)
+            if not isinstance(payload, dict) or payload.get("success") is not True:
+                raise AlertAcknowledgementError("RV Whisper rejected the acknowledgement request")
+
+            return await self._verify_acknowledgement(fingerprint)
+
+    async def _verify_acknowledgement(
+        self,
+        fingerprint: str,
+    ) -> AlertAcknowledgementResult:
+        try:
+            alerts = parse_active_alerts(await self.fetch_alert_settings())
+        except (RVWhisperError, AlertParseError, httpx.HTTPError) as exc:
+            raise AlertAcknowledgementUncertain(
+                "Acknowledgement was sent once but RV Whisper confirmation is unavailable"
+            ) from exc
+        matches = [alert for alert in alerts if alert.fingerprint == fingerprint]
+        if len(matches) == 1 and matches[0].acknowledged:
+            return AlertAcknowledgementResult("confirmed", matches[0], alerts)
+        raise AlertAcknowledgementUncertain(
+            "Acknowledgement was sent once but RV Whisper did not confirm it"
+        )
+
+    async def _resolve_ambiguous_acknowledgement(
+        self,
+        fingerprint: str,
+        cause: Exception,
+    ) -> AlertAcknowledgementResult:
+        try:
+            return await self._verify_acknowledgement(fingerprint)
+        except AlertAcknowledgementUncertain as exc:
+            raise AlertAcknowledgementUncertain(
+                "Acknowledgement result is uncertain; the request was not retried"
+            ) from cause
 
     async def fetch_sensor_page(self, sensor: Sensor) -> str:
         """Return a sensor detail page for its read-only alert summary."""

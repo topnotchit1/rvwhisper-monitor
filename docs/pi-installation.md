@@ -37,7 +37,7 @@ When run interactively, the installer offers a guided configuration wizard. It c
 sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
 ```
 
-The wizard does not change `sensor-map.json`; vendor field mapping stays a separate, evidence-based step after private payload capture. It also never asks for Wi-Fi credentials. Gateway passwords, when used, are entered without echo and remain only in the root-owned environment file. In local mode it can optionally store a separate device-local account for read-only acknowledged-alert status. Cloud credentials are never reused for that login.
+The wizard does not change `sensor-map.json`; vendor field mapping stays a separate, evidence-based step after private payload capture. It also never asks for Wi-Fi credentials. Gateway passwords, when used, are entered without echo and remain only in the root-owned environment file. In local mode it can optionally store a separate device-local account for acknowledged-alert status. It can then explicitly enable the one-at-a-time acknowledgement control and stores only a salted hash of the separate dashboard operator PIN. Cloud credentials are never reused for the RVM3 login.
 
 Local RVM3 firmware may serve authenticated pages over plain HTTP. Configure device-local alert credentials only on the trusted RV LAN, use a unique password when possible, and change any vendor factory password if the installed firmware supports it. Anonymous local telemetry remains available when these optional credentials are omitted or rejected.
 
@@ -89,7 +89,7 @@ RVW_PASSWORD=
 
 The direct address must be the RVM3 itself, not `access.rvwhisper.com`. If the RVM3 serves its dashboard beneath a path instead of at its root, place that path in `RVW_SYSTEM_PATH`. A reserved DHCP address or stable local hostname prevents the address from changing.
 
-Anonymous local reading is preferred where the RVM3 permits it. Administrator credentials printed on the device are not needed for normal read-only collection and must not be copied into GitHub. A future acknowledgement feature may require protected local credentials; the installer will collect them only after the vendor login flow is validated and the feature is explicitly enabled.
+Anonymous local reading is preferred where the RVM3 permits it. Administrator credentials printed on the device are not needed for normal telemetry collection and must not be copied into GitHub. Reading consolidated acknowledgement state and enabling the optional acknowledgement button require protected local credentials. The feature remains off unless the installer explicitly enables it and configures an operator PIN.
 
 For gateway fallback, use `RVW_ACCESS_MODE=gateway`, `RVW_BASE_URL=https://access.rvwhisper.com`, and enter `RVW_USERNAME` and `RVW_PASSWORD`. Keep the initial poll interval at 60 seconds in either mode.
 

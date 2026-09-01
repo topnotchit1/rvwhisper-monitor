@@ -12,6 +12,7 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from .envfile import parse_env_file, update_env_file
+from .operator_auth import hash_operator_pin, validate_operator_pin
 from .profile import TANK_TONES, load_profile, validate_profile
 
 
@@ -201,6 +202,7 @@ def build_configuration(
     env_updates: dict[str, str] = {}
     if connection == "demo":
         env_updates["DASHBOARD_MODE"] = "demo"
+        env_updates["ALLOW_ALERT_ACK"] = "false"
     else:
         env_updates["RVW_ACCESS_MODE"] = connection
         default_url = environment.get("RVW_BASE_URL", "")
@@ -258,9 +260,39 @@ def build_configuration(
             else:
                 env_updates["RVW_LOCAL_USERNAME"] = ""
                 env_updates["RVW_LOCAL_PASSWORD"] = ""
+            local_username_ready = env_updates.get("RVW_LOCAL_USERNAME", existing_local_username)
+            local_password_ready = env_updates.get("RVW_LOCAL_PASSWORD", existing_local_password)
+            can_acknowledge = bool(local_username_ready and local_password_ready)
+            enable_ack = can_acknowledge and prompts.yes_no(
+                "Enable dashboard alert acknowledgement?",
+                environment.get("ALLOW_ALERT_ACK", "false").casefold() == "true",
+            )
+            env_updates["ALLOW_ALERT_ACK"] = "true" if enable_ack else "false"
+            if enable_ack:
+                existing_pin_hash = environment.get("DASHBOARD_OPERATOR_PIN_HASH", "")
+                while True:
+                    pin = prompts.secret("Dashboard operator PIN (4-12 digits)", has_existing=bool(existing_pin_hash))
+                    if pin is None:
+                        if existing_pin_hash:
+                            break
+                        prompts.output("An operator PIN is required to enable dashboard acknowledgement.")
+                        env_updates["ALLOW_ALERT_ACK"] = "false"
+                        break
+                    try:
+                        validate_operator_pin(pin)
+                    except ValueError as exc:
+                        prompts.output(str(exc))
+                        continue
+                    confirmation = prompts.secret("Confirm dashboard operator PIN", has_existing=False)
+                    if confirmation != pin:
+                        prompts.output("Operator PINs did not match; try again.")
+                        continue
+                    env_updates["DASHBOARD_OPERATOR_PIN_HASH"] = hash_operator_pin(pin)
+                    break
         else:
             env_updates["RVW_LOCAL_USERNAME"] = ""
             env_updates["RVW_LOCAL_PASSWORD"] = ""
+            env_updates["ALLOW_ALERT_ACK"] = "false"
             username = prompts.text(
                 "Gateway username",
                 environment.get("RVW_USERNAME", ""),
@@ -330,6 +362,12 @@ def _summary(profile: dict[str, Any], environment: dict[str, str]) -> list[str]:
             "configured"
             if environment.get("RVW_LOCAL_USERNAME") and environment.get("RVW_LOCAL_PASSWORD")
             else "not configured"
+        ),
+        "Dashboard alert acknowledgement: " + (
+            "enabled"
+            if environment.get("ALLOW_ALERT_ACK", "false").casefold() == "true"
+            and bool(environment.get("DASHBOARD_OPERATOR_PIN_HASH"))
+            else "disabled"
         ),
         f"Enabled sections: {', '.join(enabled) or 'none'}",
         f"Climate items: {len(sections['climate']['items'])}",

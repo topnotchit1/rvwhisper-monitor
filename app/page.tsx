@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 
 type View = "home" | "battery" | "ac-power" | "climate" | "tanks" | "events";
 type Scenario = "normal" | "shore-loss" | "stale";
@@ -16,6 +16,7 @@ type DashboardProfile = {
   schema_version:number;
   vehicle:{name:string;subtitle:string;monogram:string};
   sections:{battery:ProfileSection;ac_power:ProfileSection;climate:ProfileSection&{items:ProfileItem[]};tanks:ProfileSection&{items:ProfileItem[]};events:ProfileSection};
+  capabilities?:{alert_acknowledgement?:boolean};
 };
 
 const DEFAULT_PROFILE: DashboardProfile = {
@@ -85,7 +86,23 @@ function useTelemetry() {
   },[]);
   const reading=(path:string):ApiReading|undefined=>state?state.readings[path]:(DEMO_VALUES[path]===undefined?undefined:{value:DEMO_VALUES[path],unit:null,health:"demo",observed_at:"",age_seconds:0,source:"Demo preview"});
   const value=(path:string)=>reading(path)?.value??undefined;
-  return {state,connection,reading,value,ranges,events,alerts,profile};
+  const acknowledgeAlert=async(alertId:string,pin:string)=>{
+    const base=process.env.NEXT_PUBLIC_DASHBOARD_API_URL??"http://localhost:8080";
+    const response=await fetch(`${base}/api/alerts/${encodeURIComponent(alertId)}/acknowledge`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Dashboard-Operator-PIN":pin},
+      body:JSON.stringify({confirmation:"stop-repeat-notifications"}),
+    });
+    const payload=await response.json().catch(()=>({detail:"RV Whisper acknowledgement response was unavailable"})) as {status?:string;detail?:string};
+    if(!response.ok)throw new Error(payload.detail||"RV Whisper did not confirm acknowledgement");
+    const [alertPayload,eventPayload]=await Promise.all([
+      fetch(`${base}/api/alerts`).then(r=>r.json() as Promise<{active:ApiAlert[]}>),
+      fetch(`${base}/api/events?limit=100`).then(r=>r.json() as Promise<ApiEvent[]>),
+    ]);
+    setAlerts(alertPayload.active??[]);setEvents(eventPayload);
+    return payload.status||"confirmed";
+  };
+  return {state,connection,reading,value,ranges,events,alerts,profile,acknowledgeAlert};
 }
 
 function StatusPill({label,tone="ok"}:{label:string;tone?:"ok"|"warn"|"off"}) { return <span className={`status-pill ${tone}`}><i aria-hidden="true"/>{label}</span> }
@@ -161,11 +178,17 @@ function TanksView({reading,ranges,profile}:DetailProps){
   </div>;
 }
 
-function EventsView({events,alerts,connection}:{events:ApiEvent[];alerts:ApiAlert[];connection:Connection}){
+function EventsView({events,alerts,connection,acknowledgementEnabled,onAcknowledge}:{events:ApiEvent[];alerts:ApiAlert[];connection:Connection;acknowledgementEnabled:boolean;onAcknowledge:(alertId:string,pin:string)=>Promise<string>}){
+  const [selected,setSelected]=useState<ApiAlert|null>(null),[pin,setPin]=useState(""),[busy,setBusy]=useState(false),[feedback,setFeedback]=useState("");
   const rows=events.length?events:connection==="demo"?DEMO_EVENTS:[],unacknowledged=alerts.filter(alert=>!alert.acknowledged),acknowledged=alerts.filter(alert=>alert.acknowledged);
-  return <div className="detail-view diagnostic-view"><SectionHeading eyebrow="RV WHISPER · READ ONLY" title="Alerts & Events" action={`${unacknowledged.length} needs attention · ${acknowledged.length} acknowledged`}/>
-    <section className="active-alert-panel"><div className="active-alert-heading"><div><span>ACTIVE RV WHISPER ALERTS</span><strong>{alerts.length||"None"}</strong></div><small>Acknowledgement and notification delivery remain in RV Whisper</small></div>{alerts.length?<div className="active-alert-grid">{alerts.map(alert=><article className={alert.acknowledged?"acknowledged":"unacknowledged"} key={alert.id}><StatusPill tone={alert.acknowledged?"off":"warn"} label={alert.acknowledged?"Acknowledged":"Needs attention"}/><strong>{alert.title}</strong><small>Active since {formatTimestamp(alert.created_at??undefined)}</small><p>{alert.acknowledged?"Still active; repeat notifications are silenced in RV Whisper.":"RV Whisper notifications remain active until acknowledged or cleared."}</p></article>)}</div>:<p className="no-active-alerts">No RV Whisper trigger conditions are currently active.</p>}</section>
-    <section className="event-card diagnostic-events"><div className="event-date">{connection==="demo"?"PREVIEW EVENT LOG":"LOCAL ALERT TRANSITIONS & COLLECTOR EVENTS"}</div>{rows.length?rows.map((event,index)=><div className="event-row rich-event-row" key={event.id??`${event.occurred_at}-${index}`}><time dateTime={event.occurred_at}>{formatTimestamp(event.occurred_at)}</time><i className={event.severity}/><div><strong>{event.title}</strong><small>{event.detail||"No additional detail"}</small></div><span>{event.event_type||"event"}</span><HealthBadge health={event.severity}/></div>):<p className="empty-event-log">No alert transitions or collector events have been recorded yet.</p>}</section><p className="flow-note"><b>Read-only mirror.</b> Configure and acknowledge alerts in RV Whisper. This dashboard records when active alerts appear, are acknowledged, and clear; it never sends or suppresses notifications.</p></div>;
+  const closeDialog=()=>{if(busy)return;setSelected(null);setPin("");setFeedback("")};
+  const submit=async(event:FormEvent)=>{event.preventDefault();if(!selected||busy)return;setBusy(true);setFeedback("");try{const status=await onAcknowledge(selected.id,pin);setSelected(null);setFeedback(status==="already_acknowledged"?"RV Whisper had already acknowledged this alert; no duplicate request was sent.":"RV Whisper confirmed the acknowledgement.")}catch(error){setFeedback(error instanceof Error?error.message:"Acknowledgement could not be confirmed")}finally{setPin("");setBusy(false)}};
+  return <div className="detail-view diagnostic-view"><SectionHeading eyebrow={acknowledgementEnabled?"RV WHISPER · VERIFIED LOCAL CONTROL":"RV WHISPER · READ ONLY"} title="Alerts & Events" action={`${unacknowledged.length} needs attention · ${acknowledged.length} acknowledged`}/>
+    {feedback&&<div className="ack-feedback" role="status">{feedback}</div>}
+    <section className="active-alert-panel"><div className="active-alert-heading"><div><span>ACTIVE RV WHISPER ALERTS</span><strong>{alerts.length||"None"}</strong></div><small>{acknowledgementEnabled?"One alert at a time · confirmation and operator PIN required":"Acknowledgement and notification delivery remain in RV Whisper"}</small></div>{alerts.length?<div className="active-alert-grid">{alerts.map(alert=><article className={alert.acknowledged?"acknowledged":"unacknowledged"} key={alert.id}><StatusPill tone={alert.acknowledged?"off":"warn"} label={alert.acknowledged?"Acknowledged":"Needs attention"}/><strong>{alert.title}</strong><small>Active since {formatTimestamp(alert.created_at??undefined)}</small><p>{alert.acknowledged?"Still active; repeat notifications are silenced in RV Whisper.":"RV Whisper notifications remain active until acknowledged or cleared."}</p>{acknowledgementEnabled&&!alert.acknowledged&&<button className="acknowledge-button" type="button" onClick={()=>{setSelected(alert);setFeedback("")}}>Acknowledge</button>}</article>)}</div>:<p className="no-active-alerts">No RV Whisper trigger conditions are currently active.</p>}</section>
+    <section className="event-card diagnostic-events"><div className="event-date">{connection==="demo"?"PREVIEW EVENT LOG":"LOCAL ALERT TRANSITIONS & COLLECTOR EVENTS"}</div>{rows.length?rows.map((event,index)=><div className="event-row rich-event-row" key={event.id??`${event.occurred_at}-${index}`}><time dateTime={event.occurred_at}>{formatTimestamp(event.occurred_at)}</time><i className={event.severity}/><div><strong>{event.title}</strong><small>{event.detail||"No additional detail"}</small></div><span>{event.event_type||"event"}</span><HealthBadge health={event.severity}/></div>):<p className="empty-event-log">No alert transitions or collector events have been recorded yet.</p>}</section><p className="flow-note"><b>RV Whisper remains authoritative.</b> A dashboard acknowledgement stops repeat notifications for only the current alert instance; it does not clear the condition, disable its rule, or interrupt RV Whisper monitoring.</p>
+    {selected&&<div className="ack-dialog-backdrop"><section className="ack-dialog" role="dialog" aria-modal="true" aria-labelledby="ack-dialog-title"><form onSubmit={submit}><span>CONFIRM RV WHISPER ACTION</span><h3 id="ack-dialog-title">Acknowledge “{selected.title}”?</h3><p>This stops repeat RV Whisper notifications for this active alert. The condition remains active and visible, and its alert rule stays enabled.</p><label><b>Operator PIN</b><input type="password" inputMode="numeric" pattern="[0-9]*" minLength={4} maxLength={12} required value={pin} onChange={event=>setPin(event.target.value)} autoComplete="off"/></label>{feedback&&<small className="ack-error" role="alert">{feedback}</small>}<div><button type="button" onClick={closeDialog} disabled={busy}>Cancel</button><button type="submit" className="confirm" disabled={busy||pin.length<4}>{busy?"Verifying…":"Acknowledge alert"}</button></div></form></section></div>}
+  </div>;
 }
 
 export default function Dashboard(){
@@ -178,6 +201,6 @@ export default function Dashboard(){
   const detailProps={scenario,reading:telemetry.reading,ranges:telemetry.ranges,profile:telemetry.profile},unacknowledged=telemetry.alerts.filter(alert=>!alert.acknowledged).length,attention=scenario==="shore-loss"||unacknowledged>0;
   return <main className={`dashboard-shell scenario-${scenario}`}><header className="topbar"><button className="brand-lockup" type="button" onClick={()=>setView("home")} aria-label="Go to home dashboard"><span className="brand-mark">{telemetry.profile.vehicle.monogram}</span><span><strong>{telemetry.profile.vehicle.name}</strong><small>{telemetry.profile.vehicle.subtitle}</small></span></button><div className="topbar-right"><label className="scenario-control"><span>Preview state</span><select value={scenario} onChange={event=>setScenario(event.target.value as Scenario)} aria-label="Preview dashboard state"><option value="normal">Normal</option><option value="shore-loss">Shore power lost</option><option value="stale">Stale data</option></select></label><StatusPill tone={scenario==="stale"||telemetry.connection==="offline"?"off":attention?"warn":"ok"} label={scenario==="stale"?"Stale":attention?"Attention":telemetry.connection==="online"?"Live":telemetry.connection==="offline"?"Offline":"Demo"}/><span className="clock">{clockLabel}</span></div></header>
     <nav className="rail" aria-label="Dashboard sections">{nav.map(item=><button key={item.id} className={`rail-item ${view===item.id?"active":""}`} type="button" onClick={()=>setView(item.id)}><b className={`rail-symbol rail-${item.icon}`} aria-hidden="true">{item.glyph}</b><span>{item.label}</span>{item.id==="events"&&(scenario==="shore-loss"||unacknowledged>0)&&<i>{unacknowledged||1}</i>}</button>)}</nav>
-    <section className="content" aria-live="polite">{view==="home"&&<HomeView scenario={scenario} connection={telemetry.connection} value={telemetry.value} alerts={telemetry.alerts} profile={telemetry.profile} go={setView}/>} {view==="battery"&&<BatteryView {...detailProps}/>} {view==="ac-power"&&<AcPowerView {...detailProps}/>} {view==="climate"&&<ClimateView {...detailProps}/>} {view==="tanks"&&<TanksView {...detailProps}/>} {view==="events"&&<EventsView events={telemetry.events} alerts={telemetry.alerts} connection={telemetry.connection}/>}<footer><span>Dashboard visualizes current state</span><b>RV Whisper alerts operate independently</b></footer></section>
+    <section className="content" aria-live="polite">{view==="home"&&<HomeView scenario={scenario} connection={telemetry.connection} value={telemetry.value} alerts={telemetry.alerts} profile={telemetry.profile} go={setView}/>} {view==="battery"&&<BatteryView {...detailProps}/>} {view==="ac-power"&&<AcPowerView {...detailProps}/>} {view==="climate"&&<ClimateView {...detailProps}/>} {view==="tanks"&&<TanksView {...detailProps}/>} {view==="events"&&<EventsView events={telemetry.events} alerts={telemetry.alerts} connection={telemetry.connection} acknowledgementEnabled={telemetry.profile.capabilities?.alert_acknowledgement===true} onAcknowledge={telemetry.acknowledgeAlert}/>}<footer><span>Dashboard visualizes current state</span><b>RV Whisper alerts operate independently</b></footer></section>
   </main>;
 }

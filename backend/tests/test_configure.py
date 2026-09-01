@@ -4,6 +4,7 @@ from collections import defaultdict
 
 from rv_dashboard.configure import build_configuration, write_profile
 from rv_dashboard.envfile import encode_env_value, parse_env_file, update_env_file
+from rv_dashboard.operator_auth import verify_operator_pin
 from rv_dashboard.profile import load_profile
 
 
@@ -107,6 +108,7 @@ def test_wizard_configures_local_access_sections_and_variable_climate_items():
         "RVW_PASSWORD": "",
         "RVW_LOCAL_USERNAME": "",
         "RVW_LOCAL_PASSWORD": "",
+        "ALLOW_ALERT_ACK": "false",
         "DASHBOARD_MODE": "live",
     }
 
@@ -140,6 +142,32 @@ def test_wizard_keeps_device_local_credentials_separate_from_gateway_credentials
     assert updates["RVW_LOCAL_USERNAME"] == "device-user"
     assert updates["RVW_LOCAL_PASSWORD"] == "device-password"
     assert updates["DASHBOARD_MODE"] == "live"
+
+
+def test_wizard_hashes_operator_pin_when_acknowledgement_is_enabled():
+    prompts = ScriptedPrompter(
+        choices={"Connection type": ["local"]},
+        text={
+            "RV Whisper base URL": ["http://rvm.local"],
+            "RVM3 local username": ["device-user"],
+        },
+        yes_no={
+            "Use device-local credentials for acknowledged alert status?": [True],
+            "Enable dashboard alert acknowledgement?": [True],
+            "Enable live mode now?": [True],
+        },
+        secret={
+            "RVM3 local password": ["device-password"],
+            "Dashboard operator PIN (4-12 digits)": ["4826"],
+            "Confirm dashboard operator PIN": ["4826"],
+        },
+    )
+
+    _profile, updates = build_configuration(load_profile(None), {"DASHBOARD_MODE": "demo"}, prompts)
+
+    assert updates["ALLOW_ALERT_ACK"] == "true"
+    assert "4826" not in updates["DASHBOARD_OPERATOR_PIN_HASH"]
+    assert verify_operator_pin("4826", updates["DASHBOARD_OPERATOR_PIN_HASH"]) is True
 
 
 def test_incomplete_gateway_credentials_keep_demo_mode():

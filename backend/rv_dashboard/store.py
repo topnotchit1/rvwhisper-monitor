@@ -162,6 +162,15 @@ class Store:
             ).fetchall()
         return [dict(row) | {"acknowledged": bool(row["acknowledged"])} for row in rows]
 
+    def active_alert(self, fingerprint: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT fingerprint AS id, title, acknowledged, created_at, last_seen_at
+                   FROM active_alerts WHERE fingerprint = ?""",
+                (fingerprint,),
+            ).fetchone()
+        return None if row is None else dict(row) | {"acknowledged": bool(row["acknowledged"])}
+
     def _insert_event(
         self,
         event_type: str,

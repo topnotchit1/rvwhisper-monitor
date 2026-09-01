@@ -1,9 +1,32 @@
+import asyncio
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
-from rv_dashboard.rvwhisper import LocalAlertAuthenticationError, RVWhisperClient, client_from_environment
+from rv_dashboard.alerts import parse_active_alerts
+from rv_dashboard.rvwhisper import (
+    AlertAcknowledgementError,
+    AlertAcknowledgementStale,
+    AlertAcknowledgementUncertain,
+    LocalAlertAuthenticationError,
+    RVWhisperClient,
+    client_from_environment,
+)
+
+
+def _action_page(acknowledged: bool = False) -> str:
+    state = "acknowledged-alert" if acknowledged else "unacknowledged-alert"
+    marker = " - ACKNOWLEDGED" if acknowledged else ""
+    button = "" if acknowledged else '<button data-alertid="4815">Acknowledge</button>'
+    return f"""
+    <script>const user_id = 7; const bt_nonce = "nonce-123";</script>
+    <div id="view-alerts"><ul><li class="row {state}">
+      <h3>Alert: Test{marker}</h3>
+      <h4><strong>Created:</strong><br>September 01, 2026 8:22am by <strong>admin</strong></h4>
+      {button}
+    </li></ul></div>
+    """
 
 
 @pytest.mark.asyncio
@@ -349,6 +372,182 @@ async def test_local_alert_authentication_refreshes_after_forbidden_response():
         ("POST", "/wp-login.php"),
         ("GET", "/alert-settings/"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_is_verified_and_concurrent_duplicate_posts_once():
+    acknowledged = False
+    action_posts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal acknowledged, action_posts
+        logged_in = "wordpress_logged_in_test" in request.headers.get("cookie", "")
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if logged_in:
+                return httpx.Response(200, text=_action_page(acknowledged))
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={"location": "/alert-settings/", "set-cookie": "wordpress_logged_in_test=session"},
+            )
+        if request.method == "POST" and request.url.path == "/wp-admin/admin-ajax.php":
+            action_posts += 1
+            form = parse_qs(request.content.decode())
+            assert form == {
+                "action": ["acknowledge_alert"],
+                "user_id": ["7"],
+                "alert_id": ["4815"],
+                "bt_nonce": ["nonce-123"],
+            }
+            acknowledged = True
+            return httpx.Response(200, json={"success": True, "message": "Acknowledged"})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    fingerprint = parse_active_alerts(_action_page())[0].fingerprint
+    try:
+        results = await asyncio.gather(
+            client.acknowledge_alert(fingerprint),
+            client.acknowledge_alert(fingerprint),
+        )
+    finally:
+        await client.close()
+
+    assert sorted(result.status for result in results) == ["already_acknowledged", "confirmed"]
+    assert all(result.alert.acknowledged for result in results)
+    assert action_posts == 1
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_timeout_is_reread_once_and_never_retried():
+    action_posts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal action_posts
+        logged_in = "wordpress_logged_in_test" in request.headers.get("cookie", "")
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if logged_in:
+                return httpx.Response(200, text=_action_page(False))
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={"location": "/alert-settings/", "set-cookie": "wordpress_logged_in_test=session"},
+            )
+        if request.method == "POST" and request.url.path == "/wp-admin/admin-ajax.php":
+            action_posts += 1
+            raise httpx.ReadTimeout("response interrupted", request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    fingerprint = parse_active_alerts(_action_page())[0].fingerprint
+    try:
+        with pytest.raises(AlertAcknowledgementUncertain, match="not retried"):
+            await client.acknowledge_alert(fingerprint)
+    finally:
+        await client.close()
+
+    assert action_posts == 1
+
+
+@pytest.mark.asyncio
+async def test_rejected_acknowledgement_is_not_retried():
+    action_posts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal action_posts
+        logged_in = "wordpress_logged_in_test" in request.headers.get("cookie", "")
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if logged_in:
+                return httpx.Response(200, text=_action_page(False))
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={"location": "/alert-settings/", "set-cookie": "wordpress_logged_in_test=session"},
+            )
+        if request.method == "POST" and request.url.path == "/wp-admin/admin-ajax.php":
+            action_posts += 1
+            return httpx.Response(200, json={"success": False, "message": "Rejected"})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    fingerprint = parse_active_alerts(_action_page())[0].fingerprint
+    try:
+        with pytest.raises(AlertAcknowledgementError, match="rejected"):
+            await client.acknowledge_alert(fingerprint)
+    finally:
+        await client.close()
+
+    assert action_posts == 1
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_rejects_stale_dashboard_identifier_without_posting():
+    action_posts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal action_posts
+        logged_in = "wordpress_logged_in_test" in request.headers.get("cookie", "")
+        if request.method == "GET" and request.url.path == "/alert-settings/":
+            if logged_in:
+                return httpx.Response(200, text=_action_page(False))
+            return httpx.Response(200, text="<html><main>Sign in to view alerts</main></html>")
+        if request.method == "GET" and request.url.path == "/wp-login.php":
+            return httpx.Response(200, text='<form id="loginform"></form>')
+        if request.method == "POST" and request.url.path == "/wp-login.php":
+            return httpx.Response(
+                302,
+                headers={"location": "/alert-settings/", "set-cookie": "wordpress_logged_in_test=session"},
+            )
+        if request.method == "POST" and request.url.path == "/wp-admin/admin-ajax.php":
+            action_posts += 1
+            return httpx.Response(200, json={"success": True})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = RVWhisperClient(
+        "sample-rvm",
+        access_mode="local",
+        base_url="http://rvm.local",
+        local_username="device-user",
+        local_password="device-password",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(AlertAcknowledgementStale, match="no longer"):
+            await client.acknowledge_alert("stale-dashboard-id")
+    finally:
+        await client.close()
+
+    assert action_posts == 0
 
 
 def test_environment_factory_requires_only_local_address_in_local_mode():

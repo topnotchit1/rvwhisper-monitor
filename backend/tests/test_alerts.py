@@ -1,4 +1,4 @@
-from rv_dashboard.alerts import parse_active_alerts, parse_sensor_active_alerts
+from rv_dashboard.alerts import AlertParseError, parse_active_alerts, parse_alert_action_context, parse_sensor_active_alerts
 
 
 def test_parser_returns_acknowledged_and_unacknowledged_active_alerts():
@@ -16,6 +16,37 @@ def test_parser_returns_acknowledged_and_unacknowledged_active_alerts():
         ("Refrigerator temperature high", True),
     ]
     assert alerts[0].created_at == "2026-08-20T20:00:00"
+
+
+def test_parser_extracts_backend_only_acknowledgement_context():
+    html = """
+    <script>const user_id = 7; const bt_nonce = "nonce-123";</script>
+    <div id="view-alerts"><ul>
+      <li class="row unacknowledged-alert">
+        <h3>Alert: Freezer temperature high</h3>
+        <h4><strong>Created:</strong><br>August 20, 2026 8:00pm by <strong>admin</strong></h4>
+        <button class="acknowledge-alert" data-alertid="4815">Acknowledge</button>
+      </li>
+    </ul></div>
+    """
+
+    context = parse_alert_action_context(html)
+
+    assert context.user_id == "7"
+    assert context.nonce == "nonce-123"
+    assert len(context.alerts) == 1
+    assert context.alerts[0].vendor_id == "4815"
+    assert context.alerts[0].acknowledged is False
+
+
+def test_acknowledgement_context_requires_nonce_and_user_id():
+    html = '<div id="view-alerts"><ul></ul></div>'
+    try:
+        parse_alert_action_context(html)
+    except AlertParseError as exc:
+        assert str(exc) == "RV Whisper acknowledgement metadata was not present"
+    else:
+        raise AssertionError("missing write metadata must disable acknowledgement")
 
 
 def test_parser_rejects_login_or_changed_pages():

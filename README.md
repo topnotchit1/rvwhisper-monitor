@@ -36,7 +36,8 @@ The screenshots below show the representative demo dataset. Live mode uses mappe
 - Conservative energy flow that never invents source attribution from net shunt current
 - Normalized readings such as `power.battery.soc` and `environment.dog.temperature`
 - RV Whisper collector supporting direct, credential-free RVM3 telemetry on a trusted LAN and authenticated gateway fallback
-- Optional, separate device-local authentication for read-only acknowledged-alert status; cloud credentials are never reused locally
+- Optional, separate device-local authentication for acknowledged-alert status; cloud credentials are never reused locally
+- Disabled-by-default, one-alert acknowledgement with a hashed operator PIN, authoritative reread, duplicate suppression, and local audit events
 - Read-only active-alert mirroring, including a conservative local sensor-page fallback when the consolidated alert page requires a device login
 - Automatic session recovery, bounded polling, internal event bus, SSE browser updates, and SQLite history
 - Demo mode that runs without RV hardware; live mode requires an observed sensor map and either a direct RVM3 address or gateway credentials
@@ -59,7 +60,7 @@ External acquisition may poll conservatively. Everything after collection is cha
 
 Direct LAN collection is preferred because it does not consume internet data and keeps the display working during an internet outage. Gateway access remains available as a fallback.
 
-Alert evaluation and notification delivery remain entirely inside RV Whisper. The dashboard mirrors active conditions read-only. On local RVM3 firmware that protects the consolidated alert page, the collector reads the public per-sensor alert summaries instead. Those summaries expose alert titles but not acknowledgement metadata, so the dashboard conservatively labels them **Needs attention**. A changed or unavailable vendor page never clears previously observed alerts.
+Alert evaluation and notification delivery remain entirely inside RV Whisper. The dashboard mirrors active conditions and can optionally request acknowledgement of exactly one current alert. That control is disabled by default, requires a separately hashed operator PIN, sends one vendor request, and reports success only after RV Whisper confirms it. On local RVM3 firmware that protects the consolidated alert page, the collector reads public per-sensor summaries instead; because those omit acknowledgement metadata, the dashboard conservatively labels them **Needs attention** and disables the write control. A changed or unavailable vendor page never clears previously observed alerts.
 
 ## Run the dashboard UI
 
@@ -113,7 +114,9 @@ The API listens on `http://localhost:8080` by default. Set `NEXT_PUBLIC_DASHBOAR
 4. Prefer `RVW_ACCESS_MODE=local` with `RVW_BASE_URL` set to the RVM3's direct LAN address. Gateway mode additionally requires cloud-only `RVW_USERNAME` and `RVW_PASSWORD`.
 5. If acknowledged-alert status is needed, optionally set device-only `RVW_LOCAL_USERNAME` and `RVW_LOCAL_PASSWORD` in the protected environment. Never substitute cloud credentials or commit local credentials.
 6. Start with `RVW_POLL_SECONDS=60`; do not reduce it until RV Whisper confirms an acceptable cadence.
-7. Trigger one noncritical test alert and confirm that it appears on Home and Events without changing or acknowledging it in the dashboard.
+7. Trigger one noncritical test alert and confirm that it appears on Home and Events. Leave `ALLOW_ALERT_ACK=false` during this read-only validation.
+8. If dashboard acknowledgement is desired, rerun the configuration wizard, explicitly enable it, and enter a separate operator PIN. The wizard stores only its salted hash.
+9. Validate the button once with a deliberately triggered noncritical alert before relying on it operationally.
 
 LAN addresses, credentials, and real sensor mappings belong in the Pi's protected environment file and must never be committed.
 
@@ -136,7 +139,7 @@ Each installation keeps its identity, RVM3 address, sensor mapping, and display 
 sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
 ```
 
-`dashboard-profile.json` controls the RV name, monogram, enabled sections, climate sensor labels/count, tank labels/count, and which items appear on Home. `sensor-map.json` independently maps the fields actually reported by that owner's RV Whisper installation to normalized dashboard paths. The wizard can optionally store the separate device-local account used to read acknowledged-alert status. The home screen shows up to four selected climate readings and four selected tanks; detail pages show every configured item.
+`dashboard-profile.json` controls the RV name, monogram, enabled sections, climate sensor labels/count, tank labels/count, and which items appear on Home. `sensor-map.json` independently maps the fields actually reported by that owner's RV Whisper installation to normalized dashboard paths. The wizard can optionally store the separate device-local account, explicitly enable one-alert acknowledgement, and generate a salted operator-PIN hash. The home screen shows up to four selected climate readings and four selected tanks; detail pages show every configured item.
 
 Validate the current protected configuration without changing it:
 
@@ -176,4 +179,4 @@ Data-access behavior is derived from [Yeraze/rvwhisper-monitor](https://github.c
 
 ## Status
 
-The software foundation and hardware-independent MVP are ready. Direct-LAN RVM3 telemetry and read-only active-alert mirroring have been validated against observed firmware behavior. Each installation still requires its own private sensor map and dashboard profile; unsupported or uninstalled battery, tank, and other hardware remains **Not reported** rather than being estimated. Alert acknowledgement is intentionally disabled pending authenticated, noncritical validation. See the open-question drafts before making additional hardware-specific assumptions.
+The software foundation and hardware-independent MVP are ready. Direct-LAN RVM3 telemetry and authenticated active-alert mirroring have been validated against observed firmware behavior. Each installation still requires its own private sensor map and dashboard profile; unsupported or uninstalled battery, tank, and other hardware remains **Not reported** rather than being estimated. Alert acknowledgement is implemented but remains disabled by default pending a final noncritical live-button validation. See the open-question drafts before making additional hardware-specific assumptions.

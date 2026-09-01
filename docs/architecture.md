@@ -50,4 +50,4 @@ PowerMon and Power Watchdog readings already integrated into RV Whisper are coll
 
 ## Alert acknowledgement boundary
 
-RV Whisper remains the only alert evaluator and notification sender. A future dashboard acknowledgement action may request acknowledgement of one currently active alert, but it must be disabled by default, authenticated locally, confirmed by re-reading RV Whisper, and unable to edit, deactivate, or delete alert triggers. See `docs/alert-acknowledgement.md`.
+RV Whisper remains the only alert evaluator and notification sender. The optional dashboard acknowledgement action is disabled by default, accepts only loopback requests from the dashboard device, requires authenticated local RVM3 access plus a separately hashed operator PIN, matches one currently active instance, submits once, and reports success only after re-reading RV Whisper. Authenticated alert cookies are isolated from anonymous telemetry. The dashboard cannot edit, deactivate, or delete alert triggers. See `docs/alert-acknowledgement.md`.

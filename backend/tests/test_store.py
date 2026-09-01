@@ -37,6 +37,8 @@ def test_store_tracks_alert_acknowledgement_and_resolution(tmp_path):
     alert = ActiveAlert("a1", "Freezer is warm", False, "2026-08-20T20:00:00")
     assert store.sync_active_alerts([alert]) is True
     assert store.active_alerts()[0]["acknowledged"] is False
+    assert store.active_alert("a1")["title"] == "Freezer is warm"
+    assert store.active_alert("missing") is None
     assert store.sync_active_alerts([alert]) is False
 
     acknowledged = ActiveAlert("a1", "Freezer is warm", True, "2026-08-20T20:00:00")

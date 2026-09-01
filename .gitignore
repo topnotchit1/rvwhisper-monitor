@@ -40,6 +40,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 .pytest-audit-*/
+.pytest-codex-*/
 /backend/data/
 /backend/captures/
 

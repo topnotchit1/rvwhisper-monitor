@@ -2,7 +2,7 @@
 
 ## Status
 
-Not enabled. RVM3 firmware 4.831 has now been validated with a deliberately triggered noncritical alert: the vendor UI submitted one acknowledgement, a server-side reread moved the alert to **Acknowledged, Active Alerts**, and the acknowledgement control disappeared. No dashboard write endpoint exists yet. Repeated, stale, and interrupted-request behavior must still be tested before dashboard acknowledgements can be enabled.
+Implemented behind an installation opt-in, but disabled by default. RVM3 firmware 4.831 has been validated with a deliberately triggered noncritical alert: the vendor UI submitted one acknowledgement, a server-side reread moved the alert to **Acknowledged, Active Alerts**, and the acknowledgement control disappeared. The dashboard request path now has automated coverage for confirmed, concurrent duplicate, stale, rejected, and interrupted outcomes. A final noncritical live-device validation through the dashboard is still required before enabling it for routine use.
 
 The local RVM3 login is a device-local WordPress account, separate from the RV Whisper cloud account. Any future acknowledgement integration must use installation-specific local credentials stored only in the protected Pi environment; credentials, cookies, and nonces must never be sent to the browser or committed.
 
@@ -16,7 +16,7 @@ Some devices may ship with vendor-provided local credentials. The dashboard neve
 - If that page requires a local device login, local mode reads each public sensor page and imports the titles shown under **Current Alerts**.
 - Public sensor pages do not expose acknowledgement or creation metadata. The dashboard therefore treats those alerts as unacknowledged/needs-attention rather than risking a false all-clear.
 - A missing, changed, or partially unavailable vendor page is a recoverable collection failure and does not clear the last successfully observed active-alert set.
-- This fallback never submits a form, acknowledges an alert, changes a trigger, or affects RV Whisper notification delivery.
+- This fallback never submits a form. Dashboard acknowledgement is unavailable unless authenticated consolidated-alert access succeeds and the installation explicitly enables it.
 
 ## Confirmed vendor request shape
 
@@ -34,7 +34,7 @@ Acknowledgement is not dismissal. It stops repeat RV Whisper notifications for t
 
 ## Required behavior
 
-- Disabled by default with `ALLOW_ALERT_ACK=false`.
+- Disabled by default with `ALLOW_ALERT_ACK=false`; the installer stores only a salted PBKDF2 hash of the separate dashboard operator PIN.
 - Available only to an authenticated local operator and only for a currently active, unacknowledged alert.
 - No bulk acknowledgement and no dashboard controls for editing, disabling, or deleting alert triggers.
 - A confirmation explains that repeat notifications will stop but the condition will remain active.
@@ -42,15 +42,14 @@ Acknowledgement is not dismissal. It stops repeat RV Whisper notifications for t
 - The backend refreshes the alert page, validates exactly one matching current alert, submits the vendor action once, and re-reads the page.
 - The UI shows success only after RV Whisper reports the alert as acknowledged.
 - Timeout or ambiguous results remain unconfirmed, trigger a fresh read, and are never reported as success optimistically.
-- Requested, confirmed, failed, and uncertain results are written to the local event log without contact information.
+- Requested, confirmed, already-confirmed, denied, stale, failed, and uncertain results are written to the local event log without contact information.
 - A failed acknowledgement command does not change collector health or stop telemetry polling.
+- Authenticated alert cookies use a separate HTTP session and cannot alter anonymous telemetry collection.
+- Five invalid operator-PIN attempts temporarily lock the control; the PIN is never stored in browser storage or sent to RV Whisper.
+- The write endpoint accepts only loopback requests originating on the dashboard device; remote LAN browsers remain read-only.
 
 ## Remaining validation before dashboard writes
 
-Using a deliberately triggered, noncritical test alert, privately validate:
-
-1. behavior for a repeated request, a stale alert, and an interrupted request;
-2. whether the local device account password can be changed on supported firmware;
-3. the dashboard's future operator-authentication and audit behavior on the deployed Pi.
+Using a deliberately triggered, noncritical test alert, privately validate the complete dashboard button flow against the live RVM3. Automated tests already prove that repeated/concurrent, stale, rejected, and interrupted requests never produce an automatic duplicate POST. Password-change support for the local device account remains firmware-dependent.
 
 Raw HTML and credentials remain private installation artifacts and are never committed.
