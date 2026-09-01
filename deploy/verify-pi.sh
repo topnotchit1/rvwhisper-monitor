@@ -2,10 +2,23 @@
 set -u
 
 FAILURES=0
+INSTALL_ROOT="${INSTALL_ROOT:-/opt/minnie-dashboard}"
+CONFIG_DIR="${CONFIG_DIR:-/etc/minnie-dashboard}"
 
 pass() { printf 'PASS  %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; FAILURES=$((FAILURES + 1)); }
 warn() { printf 'WARN  %s\n' "$1" >&2; }
+
+CONFIGURE_PYTHON="$INSTALL_ROOT/current/backend/.venv/bin/python"
+if [[ -x "$CONFIGURE_PYTHON" ]] && \
+  "$CONFIGURE_PYTHON" -m rv_dashboard.configure \
+    --env-file "$CONFIG_DIR/dashboard.env" \
+    --profile-file "$CONFIG_DIR/dashboard-profile.json" \
+    --check >/dev/null; then
+  pass "dashboard configuration is valid"
+else
+  fail "dashboard configuration is missing or invalid"
+fi
 
 for service in minnie-dashboard-api.service minnie-dashboard-ui.service; do
   if systemctl is-active --quiet "$service"; then

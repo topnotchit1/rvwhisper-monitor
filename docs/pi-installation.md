@@ -31,10 +31,18 @@ sudo bash deploy/install-pi.sh
 
 The installer creates a dedicated `rvdashboard` service account, a versioned release under `/opt/minnie-dashboard`, protected configuration under `/etc/minnie-dashboard`, persistent data under `/var/lib/minnie-dashboard`, and two systemd services. Existing credentials and sensor mappings are preserved during later installs.
 
-When run interactively, the installer offers to configure the RV display name and direct RVM3 address. These values are installation-specific and are never written into the Git checkout. Run the configuration step again at any time with:
+When run interactively, the installer offers a guided configuration wizard. It configures the RV display identity, demo/direct-LAN/gateway access, section visibility and labels, climate and tank item counts, normalized display paths, and which readings appear on Home. All answers are staged and validated before either protected file is replaced, so canceling the wizard leaves the existing installation unchanged. These values are installation-specific and are never written into the Git checkout. Run the configuration step again at any time with:
 
 ```bash
 sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
+```
+
+The wizard does not change `sensor-map.json`; vendor field mapping stays a separate, evidence-based step after private payload capture. It also never asks for Wi-Fi credentials. Gateway passwords, when used, are entered without echo and remain only in the root-owned environment file.
+
+Validate the current profile and environment file without changing them:
+
+```bash
+sudo /opt/minnie-dashboard/current/backend/.venv/bin/rv-dashboard-configure --check
 ```
 
 ## Verify demo mode first
@@ -114,7 +122,7 @@ The optional built-in Wi-Fi Status sensor is useful diagnostic context. If insta
 
 ## Customize names and sensor counts
 
-The protected file `/etc/minnie-dashboard/dashboard-profile.json` controls presentation. Change the vehicle name and monogram, disable sections that are not installed, add or remove climate and tank items, edit labels, and choose Home items with the `home` property. Home intentionally displays at most four climate items and four tanks; all configured items appear on their diagnostic pages.
+The protected file `/etc/minnie-dashboard/dashboard-profile.json` controls presentation. The guided configuration tool is the preferred way to change the vehicle name and monogram, disable sections that are not installed, add or remove climate and tank items, edit labels, and choose Home items. Home intentionally displays at most four climate items and four tanks; all configured items appear on their diagnostic pages. Advanced users may still edit the JSON directly, but `rv-dashboard-configure --check` should be run afterward.
 
 The profile contains normalized paths, never vendor serial numbers. The separate `/etc/minnie-dashboard/sensor-map.json` connects the owner's observed RV Whisper fields to those paths. Both files are preserved across upgrades and excluded from Git.
 

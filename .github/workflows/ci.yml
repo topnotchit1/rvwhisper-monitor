@@ -32,6 +32,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e "./backend[dev]"
+      - run: rv-dashboard-configure --env-file backend/.env.example --profile-file backend/config/dashboard-profile.example.json --check
       - run: python -m pytest -q backend/tests
 
   windows-launcher:

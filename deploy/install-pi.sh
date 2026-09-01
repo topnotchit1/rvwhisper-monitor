@@ -91,7 +91,7 @@ if [[ ! -f "$CONFIG_DIR/dashboard-profile.json" ]]; then
 fi
 
 if [[ -t 0 && "${SKIP_INTERACTIVE_CONFIG:-0}" != "1" ]]; then
-  read -r -p "Configure the RV name and direct RVM3 LAN address now? [Y/n] " configure_now
+  read -r -p "Run the guided dashboard configuration now? [Y/n] " configure_now
   if [[ ! "$configure_now" =~ ^[Nn]$ ]]; then
     "$RELEASE_DIR/deploy/configure-dashboard.sh" --no-restart
   fi

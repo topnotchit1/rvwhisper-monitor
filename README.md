@@ -128,13 +128,19 @@ The installer intentionally starts in demo mode and preserves Pi-only credential
 
 ### Configure an installation
 
-Each installation keeps its identity, RVM3 address, sensor mapping, and display choices outside the public repository. The interactive installer offers to collect the RV display name and direct RVM3 LAN address. It can also be rerun later:
+Each installation keeps its identity, RVM3 address, sensor mapping, and display choices outside the public repository. The interactive installer includes a guided configuration wizard for the RV identity, demo/direct-LAN/gateway mode, enabled sections, section labels, climate sensor count, tank count, normalized display paths, and Home-screen selection. It stages and validates the complete configuration before atomically replacing either protected file. It can also be rerun later:
 
 ```bash
 sudo /opt/minnie-dashboard/current/deploy/configure-dashboard.sh
 ```
 
 `dashboard-profile.json` controls the RV name, monogram, enabled sections, climate sensor labels/count, tank labels/count, and which items appear on Home. `sensor-map.json` independently maps the fields actually reported by that owner's RV Whisper installation to normalized dashboard paths. The home screen shows up to four selected climate readings and four selected tanks; detail pages show every configured item.
+
+Validate the current protected configuration without changing it:
+
+```bash
+sudo /opt/minnie-dashboard/current/backend/.venv/bin/rv-dashboard-configure --check
+```
 
 Wi-Fi names and passwords are managed by Raspberry Pi OS, not by the dashboard. The dashboard profile, RVM3 LAN address, credentials, and real sensor names remain Pi-local and are never committed.
 

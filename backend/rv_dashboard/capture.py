@@ -8,27 +8,14 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .envfile import load_env_file as _load_env_file
 from .rvwhisper import client_from_environment
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV_KEY = re.compile(r"^[A-Z][A-Z0-9_]*$")
-
-
 def load_env_file(path: Path) -> None:
     """Load the simple KEY=VALUE format used by the protected Pi environment file."""
-    for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        key, separator, value = line.partition("=")
-        key = key.strip()
-        if not separator or not ENV_KEY.fullmatch(key):
-            raise ValueError(f"Invalid environment entry on line {number}")
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'\"', "'"}:
-            value = value[1:-1]
-        os.environ.setdefault(key, value)
+    _load_env_file(path)
 
 
 def safe_name(value: str, fallback: str) -> str:
