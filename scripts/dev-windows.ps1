@@ -163,7 +163,7 @@ function Test-IsProjectListener([int]$ProcessId, [int]$Port) {
         }
         elseif ($Port -eq $UiPort) {
             $response = Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:$UiPort/" -TimeoutSec 5
-            if ($response.StatusCode -eq 200 -and $response.Content -match "Minnie Winnie Systems") {
+            if ($response.StatusCode -eq 200 -and $response.Content -match "RV Systems Dashboard") {
                 return $true
             }
         }
@@ -281,7 +281,7 @@ function Wait-ForUi([datetime]$Deadline) {
     while ((Get-Date) -lt $Deadline) {
         try {
             $response = Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:$UiPort/" -TimeoutSec 3
-            if ($response.StatusCode -eq 200 -and $response.Content -match "Minnie Winnie Systems") {
+            if ($response.StatusCode -eq 200 -and $response.Content -match "RV Systems Dashboard") {
                 return
             }
             $lastError = "HTTP $($response.StatusCode) did not contain the dashboard application marker"

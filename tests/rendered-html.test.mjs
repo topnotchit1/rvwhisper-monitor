@@ -17,7 +17,7 @@ test("server-renders the RV dashboard shell", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>Minnie Winnie Systems<\/title>/i);
+  assert.match(html, /<title>RV Systems Dashboard<\/title>/i);
   assert.match(html, /Minnie Winnie/);
   assert.match(html, /Unified systems/);
   assert.match(html, /RV Whisper alerts operate independently/);

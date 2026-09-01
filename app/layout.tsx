@@ -11,13 +11,13 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = incoming.get("x-forwarded-host") ?? incoming.get("host") ?? "localhost:3000";
   const protocol = incoming.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
-  const title = "Minnie Winnie Systems";
+  const title = "RV Systems Dashboard";
   const description = "Whole-RV power, climate, tanks, and connectivity at a glance.";
   return {
     metadataBase: new URL(origin),
     title,
     description,
-    openGraph: { title, description, type: "website", images: [{ url: `${origin}/og.jpg`, width: 600, height: 315, alt: "Minnie Winnie Unified RV Systems dashboard" }] },
+    openGraph: { title, description, type: "website", images: [{ url: `${origin}/og.jpg`, width: 600, height: 315, alt: "Unified RV systems dashboard" }] },
     twitter: { card: "summary_large_image", title, description, images: [`${origin}/og.jpg`] },
   };
 }
