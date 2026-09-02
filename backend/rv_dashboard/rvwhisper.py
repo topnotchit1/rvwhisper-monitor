@@ -91,10 +91,15 @@ class RVWhisperClient:
         self.system_path = f"/{configured_path.strip('/')}" if configured_path.strip("/") else ""
         self._nonce: str | None = None
         self._alert_action_lock = asyncio.Lock()
+        # The embedded RVM3 web server can leave otherwise complete responses
+        # open indefinitely. Closing local connections keeps httpx from waiting
+        # for EOF after the full HTML/JSON payload has already arrived.
+        client_headers = {"Connection": "close"} if access_mode == "local" else None
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=timeout_seconds,
             follow_redirects=True,
+            headers=client_headers,
             transport=transport,
         )
         self._local_alert_client = (
@@ -102,6 +107,7 @@ class RVWhisperClient:
                 base_url=self.base_url,
                 timeout=timeout_seconds,
                 follow_redirects=True,
+                headers=client_headers,
                 transport=transport,
             )
             if access_mode == "local" and local_username and local_password

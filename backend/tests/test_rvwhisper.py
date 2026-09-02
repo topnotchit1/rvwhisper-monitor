@@ -71,6 +71,7 @@ async def test_local_mode_skips_login_and_uses_root_ajax_endpoint():
     assert form["sensor"] == ["42"]
     assert form["bt_nonce"] == [""]
     assert requests[2].url.params["sensor_id"] == "42"
+    assert all(request.headers["connection"] == "close" for request in requests)
 
 
 @pytest.mark.asyncio
@@ -104,6 +105,7 @@ async def test_gateway_mode_retains_login_csrf_and_system_prefix():
         ("POST", "/account/login"),
         ("GET", "/sample-rvm"),
     ]
+    assert all(request.headers.get("connection") != "close" for request in requests)
 
 
 @pytest.mark.asyncio

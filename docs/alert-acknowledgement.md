@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented behind an installation opt-in, but disabled by default. RVM3 firmware 4.831 has been validated with a deliberately triggered noncritical alert: the vendor UI submitted one acknowledgement, a server-side reread moved the alert to **Acknowledged, Active Alerts**, and the acknowledgement control disappeared. The dashboard request path now has automated coverage for confirmed, concurrent duplicate, stale, rejected, and interrupted outcomes. A final noncritical live-device validation through the dashboard is still required before enabling it for routine use.
+Implemented behind an installation opt-in and disabled by default. RVM3 firmware 4.831 has been validated end to end with deliberately triggered noncritical alerts. In the dashboard-button test, exactly one acknowledgement request was sent; a momentary LAN interruption made the immediate result uncertain, so the dashboard did not claim success or retry. The next authenticated reread showed the alert acknowledged and removed the action button. The request path also has automated coverage for confirmed, concurrent duplicate, stale, rejected, and interrupted outcomes.
 
 The local RVM3 login is a device-local WordPress account, separate from the RV Whisper cloud account. Any future acknowledgement integration must use installation-specific local credentials stored only in the protected Pi environment; credentials, cookies, and nonces must never be sent to the browser or committed.
 
@@ -48,8 +48,8 @@ Acknowledgement is not dismissal. It stops repeat RV Whisper notifications for t
 - Five invalid operator-PIN attempts temporarily lock the control; the PIN is never stored in browser storage or sent to RV Whisper.
 - The write endpoint accepts only loopback requests originating on the dashboard device; remote LAN browsers remain read-only.
 
-## Remaining validation before dashboard writes
+## Live validation result
 
-Using a deliberately triggered, noncritical test alert, privately validate the complete dashboard button flow against the live RVM3. Automated tests already prove that repeated/concurrent, stale, rejected, and interrupted requests never produce an automatic duplicate POST. Password-change support for the local device account remains firmware-dependent.
+The complete dashboard button flow was privately validated against a deliberately triggered, noncritical alert. A transient connection loss after the write exercised the ambiguous-result path: the dashboard recorded the request as uncertain, sent no duplicate POST, and reconciled to the RVM3's acknowledged state on the next successful read. Password-change support for the local device account remains firmware-dependent.
 
 Raw HTML and credentials remain private installation artifacts and are never committed.
