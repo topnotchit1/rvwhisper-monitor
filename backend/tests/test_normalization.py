@@ -23,6 +23,22 @@ def test_old_reading_is_never_reported_as_current():
     assert api["overall_health"] == Health.STALE.value
 
 
+def test_snapshot_reports_safe_collector_diagnostics_and_recovery():
+    snapshot = Snapshot(collector_online=False)
+    snapshot.mark_collector_offline({"code": "unreachable", "message": "RV Whisper is unreachable on the network"})
+
+    offline = snapshot.to_api(stale_after_seconds=150)
+    assert offline["overall_health"] == Health.OFFLINE.value
+    assert offline["collector_error"]["code"] == "unreachable"
+    assert offline["collector_last_success_at"] is None
+
+    snapshot.mark_collector_online()
+    recovered = snapshot.to_api(stale_after_seconds=150)
+    assert recovered["collector_online"] is True
+    assert recovered["collector_error"] is None
+    assert recovered["collector_last_success_at"] is not None
+
+
 def test_vendor_up_status_is_normalized_as_online():
     normalizer = Normalizer([
         FieldRule("Starlink", "InternetStatus", "network.internet.online", transform="boolean")

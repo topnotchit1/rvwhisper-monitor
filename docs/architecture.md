@@ -13,6 +13,7 @@ The custom application is not an alarm system. RV Whisper independently owns ale
 5. Active RV Whisper conditions are mirrored from the consolidated alert page or, in local mode, conservatively from public per-sensor alert summaries.
 6. Server-Sent Events push coherent state and alert updates to all connected browsers.
 7. The UI computes freshness from the observation timestamp and displays stale state explicitly.
+8. On process restart, the last stored readings are restored as stale context until a fresh RVM3 poll succeeds.
 
 ## Normalized model
 
@@ -39,7 +40,8 @@ SQLite stores one current row per normalized path, 24–72 hours of high-resolut
 - Local alert-page authentication failure: fall back to public sensor summaries without interrupting telemetry; preserve the last successful active-alert set if the fallback is incomplete.
 - Alert-page or partial sensor-page failure: never infer that alerts cleared.
 - Internet outage while using local RVM3 access: dashboard telemetry continues; RV Whisper remote access and notifications retain their own independent internet requirements.
-- RVM3 LAN outage: exponential retry up to 15 minutes; no rapid hammering.
+- RVM3 LAN outage: retain the last readings as stale context, expose a sanitized failure reason, and retry direct-LAN access within 60 seconds. Gateway mode retains exponential backoff up to 15 minutes to avoid rate-limit pressure.
+- RVM3 embedded HTTP response left open: direct-LAN requests ask the device to close each completed response, avoiding false read timeouts without changing gateway behavior.
 - Browser disconnect: EventSource reconnects; one state snapshot is sent immediately.
 - Pi failure: RV Whisper alerts continue without the Pi.
 - Direct PowerMon failure in phase 2: fall back to RV Whisper data; never merge incompatible timestamps as current.

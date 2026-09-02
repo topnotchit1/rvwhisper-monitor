@@ -11,6 +11,11 @@ def test_store_upserts_current_and_appends_history(tmp_path):
     store.save_readings([reading])
     store.save_readings([reading])
     store.add_event("test", "normal", "Saved reading")
+    restored = store.current_readings()
+    assert len(restored) == 1
+    assert restored[0].path == reading.path
+    assert restored[0].value == 87
+    assert restored[0].observed_at == reading.observed_at
     assert store.recent_events(1)[0]["title"] == "Saved reading"
     store.close()
 

@@ -52,9 +52,11 @@ HISTORY_PATHS = [
     "power.ac.rssi",
 ] + CLIMATE_PATHS + CLIMATE_HUMIDITY_PATHS + [item["path"] for item in PROFILE["sections"]["tanks"]["items"]]
 
-snapshot = demo_snapshot() if MODE != "live" else Snapshot()
+snapshot = demo_snapshot() if MODE != "live" else Snapshot(collector_online=False)
 bus = EventBus()
 store = Store(os.getenv("DASHBOARD_DB", str(ROOT / "data" / "dashboard.db")))
+if MODE == "live":
+    snapshot.merge(store.current_readings())
 collector: Collector | None = None
 operator_pin_guard = OperatorPinGuard()
 
@@ -104,7 +106,15 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, object]:
-    return {"status": "ok", "mode": MODE, "collector_online": snapshot.collector_online}
+    return {
+        "status": "ok",
+        "mode": MODE,
+        "collector_online": snapshot.collector_online,
+        "collector_last_success_at": (
+            snapshot.collector_last_success_at.isoformat() if snapshot.collector_last_success_at else None
+        ),
+        "collector_error": snapshot.collector_error,
+    }
 
 
 @app.get("/api/state")

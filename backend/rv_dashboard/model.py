@@ -43,6 +43,20 @@ class Snapshot:
     readings: dict[str, Reading] = field(default_factory=dict)
     generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     collector_online: bool = True
+    collector_last_success_at: datetime | None = None
+    collector_error: dict[str, str] | None = None
+
+    def mark_collector_online(self) -> None:
+        now = datetime.now(UTC)
+        self.collector_online = True
+        self.collector_last_success_at = now
+        self.collector_error = None
+        self.generated_at = now
+
+    def mark_collector_offline(self, error: dict[str, str]) -> None:
+        self.collector_online = False
+        self.collector_error = error
+        self.generated_at = datetime.now(UTC)
 
     def merge(self, incoming: list[Reading]) -> list[Reading]:
         changed: list[Reading] = []
@@ -67,6 +81,10 @@ class Snapshot:
         return {
             "generated_at": self.generated_at.isoformat(),
             "collector_online": self.collector_online,
+            "collector_last_success_at": (
+                self.collector_last_success_at.isoformat() if self.collector_last_success_at else None
+            ),
+            "collector_error": self.collector_error,
             "overall_health": overall.value,
             "readings": readings,
         }

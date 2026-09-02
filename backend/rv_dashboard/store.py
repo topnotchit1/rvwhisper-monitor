@@ -8,7 +8,7 @@ from threading import Lock
 from typing import Any
 
 from .alerts import ActiveAlert
-from .model import Reading
+from .model import Health, Reading
 
 
 SCHEMA = (
@@ -82,6 +82,32 @@ class Store:
                     "INSERT INTO samples(path, value_json, unit, observed_at, source, health) VALUES(?, ?, ?, ?, ?, ?)",
                     values,
                 )
+
+    def current_readings(self) -> list[Reading]:
+        """Restore the last known snapshot after a dashboard process restart."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT path, value_json, unit, observed_at, source, health FROM current_state"
+            ).fetchall()
+        readings: list[Reading] = []
+        for row in rows:
+            try:
+                observed_at = datetime.fromisoformat(row["observed_at"])
+                if observed_at.tzinfo is None:
+                    observed_at = observed_at.replace(tzinfo=UTC)
+                readings.append(
+                    Reading(
+                        row["path"],
+                        json.loads(row["value_json"]),
+                        row["unit"],
+                        observed_at,
+                        row["source"],
+                        Health(row["health"]),
+                    )
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        return readings
 
     def add_event(self, event_type: str, severity: str, title: str, detail: str = "", data: dict[str, Any] | None = None) -> None:
         with self._lock, self._connection:
